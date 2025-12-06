@@ -77,7 +77,12 @@ function App() {
 
     setConnectionStatus("connecting");
     try {
-      const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`);
+      const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`, {
+        headers: {
+          'xi-api-key': apiKey,
+          'xi-agent-id': agentId
+        }
+      });
       const { signedUrl: url } = resp.data;
 
       await conversation.startSession({
@@ -114,6 +119,8 @@ function App() {
     if (!apiKey || !agentId) return alert("API Key and Agent ID required");
     setIsLoadingConfig(true);
     try {
+      console.log(`[DEBUG] Loading Config for Agent: ${agentId}`);
+      console.log(`[DEBUG] Using API Key: ${apiKey ? apiKey.substring(0, 5) + "..." : "MISSING"}`);
       // 1. Fetch Agent Details
       const agentResp = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
         headers: { 'xi-api-key': apiKey }
