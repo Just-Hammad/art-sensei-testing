@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
 import { Mic, Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Plus, Eye, EyeOff } from 'lucide-react';
@@ -23,6 +23,8 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const messagesEndRef = useRef(null);
 
   // Admin State
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -52,6 +54,9 @@ function App() {
       const role = message.source === 'user' ? 'user' : 'assistant';
       const text = message.message || "";
       addMessage(role, text);
+      if (role === 'assistant') {
+        setIsWaitingForResponse(false);
+      }
     },
     onError: (err) => {
       console.error(err);
@@ -67,6 +72,10 @@ function App() {
 
   const addSystemMessage = (text) => {
     setMessages(prev => [...prev, { role: 'system', content: text, timestamp: new Date() }]);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // Client Tools State
@@ -88,11 +97,23 @@ function App() {
       });
       const { signedUrl: url } = resp.data;
 
+      // Generate a temporary user ID for this session
+      const tempUserId = `user_TESTING_ARTSENSEI`;
+      const tempChatId = `chat_TESTING_ARTSENSEI`;
+
+      console.log("[Connect] Starting session with:", { tempUserId, tempChatId });
+
       await conversation.startSession({
         signedUrl: url,
         connectionType: "websocket",
+        customLlmExtraBody: {
+          chatId: tempChatId,
+          userId: tempUserId,
+        },
         dynamicVariables: {
           first_name: "User",
+          session_context: "No prior session history.",
+          global_context: "No long-term user knowledge available.",
         },
         clientTools: {
           showImageOnScreen: async ({ imagePath }) => {
@@ -137,8 +158,10 @@ function App() {
         }
       });
 
+      console.log("[Connect] Session started successfully");
+
     } catch (err) {
-      console.error(err);
+      console.error("[Connect] Error:", err);
       setConnectionStatus("error");
       addSystemMessage(`Connection Failed: ${err.message}`);
     }
@@ -151,8 +174,22 @@ function App() {
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
-    await conversation.sendUserMessage(inputText);
-    setInputText("");
+    if (connectionStatus !== 'connected') {
+      console.error("Cannot send message: Not connected to ElevenLabs");
+      return;
+    }
+    
+    try {
+      addMessage('user', inputText);
+      setInputText("");
+      setIsWaitingForResponse(true);
+      
+      await conversation.sendUserMessage(inputText);
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      addSystemMessage(`Failed to send message: ${error.message}`);
+      setIsWaitingForResponse(false);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -290,7 +327,10 @@ function App() {
 
 
   useEffect(() => {
-    // Security: Save to sessionStorage only
+    scrollToBottom();
+  }, [messages, isWaitingForResponse]);
+
+  useEffect(() => {
     sessionStorage.setItem("xi-api-key", apiKey);
     sessionStorage.setItem("xi-agent-id", agentId);
   }, [apiKey, agentId]);
@@ -323,6 +363,19 @@ function App() {
               <div className={`message-bubble ${msg.role}`}>{msg.content}</div>
             </div>
           ))}
+          {isWaitingForResponse && (
+            <div className="message-row assistant">
+              <div className="marcel-loading">
+                <span className="marcel-name">Marcel</span>
+                <div className="loading-dots">
+                  <span className="dot" style={{ animationDelay: '0ms' }}></span>
+                  <span className="dot" style={{ animationDelay: '150ms' }}></span>
+                  <span className="dot" style={{ animationDelay: '300ms' }}></span>
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
 

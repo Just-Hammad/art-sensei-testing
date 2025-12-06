@@ -342,6 +342,45 @@ html {
   box-shadow: none;
 }
 
+.marcel-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: var(--bubble-ai);
+  border-radius: 18px;
+  border-bottom-left-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.marcel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-scnd);
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.loading-dots .dot {
+  width: 6px;
+  height: 6px;
+  background-color: #94a3b8;
+  border-radius: 50%;
+  animation: marcel-bounce 1s infinite;
+}
+
+@keyframes marcel-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
 /* --- Input Area --- */
 .input-area {
   padding: 20px;
