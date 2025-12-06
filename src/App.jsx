@@ -90,6 +90,7 @@ function App() {
 
       await conversation.startSession({
         signedUrl: url,
+        connectionType: "websocket",
         dynamicVariables: {
           first_name: "User",
         },
