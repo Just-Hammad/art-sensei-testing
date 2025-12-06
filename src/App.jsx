@@ -1,19 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
-import { Mic, Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Plus } from 'lucide-react';
+import { Mic, Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Plus, Eye, EyeOff } from 'lucide-react';
 import './App.css'; // Import the new CSS
 
 // Default Config
 const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
 // NOTE: For Admin updates, we go direct to ElevenLabs API to avoid needing backend endpoints for it
-// NOTE: For Admin updates, we go direct to ElevenLabs API to avoid needing backend endpoints for it
+
 
 function App() {
   // --- STATE ---
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND);
-  const [apiKey, setApiKey] = useState(localStorage.getItem("xi-api-key") || import.meta.env.VITE_ELEVENLABS_API_KEY || "");
-  const [agentId, setAgentId] = useState(localStorage.getItem("xi-agent-id") || import.meta.env.VITE_AGENT_ID || "");
+  // Security Update: Use sessionStorage (clears when tab closes) instead of localStorage
+  const [apiKey, setApiKey] = useState(sessionStorage.getItem("xi-api-key") || import.meta.env.VITE_ELEVENLABS_API_KEY || "");
+  const [agentId, setAgentId] = useState(sessionStorage.getItem("xi-agent-id") || import.meta.env.VITE_AGENT_ID || "");
+
+  // UI State
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // Chat State
   const [messages, setMessages] = useState([]);
@@ -224,8 +228,9 @@ function App() {
 
 
   useEffect(() => {
-    localStorage.setItem("xi-api-key", apiKey);
-    localStorage.setItem("xi-agent-id", agentId);
+    // Security: Save to sessionStorage only
+    sessionStorage.setItem("xi-api-key", apiKey);
+    sessionStorage.setItem("xi-agent-id", agentId);
   }, [apiKey, agentId]);
 
   return (
@@ -339,7 +344,18 @@ function App() {
         <div className="card">
           <div className="form-group">
             <label className="form-label">API Key</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="xi-..." />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="xi-..."
+                style={{ flex: 1 }}
+              />
+              <button onClick={() => setShowApiKey(!showApiKey)} className="btn-icon">
+                {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Agent ID</label>
@@ -427,5 +443,3 @@ function App() {
     </div>
   )
 }
-
-export default App
