@@ -26,8 +26,7 @@ function App() {
 
   // Admin State
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [llmProvider, setLlmProvider] = useState("openai");
-  const [llmModel, setLlmModel] = useState("gpt-4o");
+
 
   const [availableKBs, setAvailableKBs] = useState([]);
   const [selectedKBMap, setSelectedKBMap] = useState({});
@@ -70,6 +69,10 @@ function App() {
     setMessages(prev => [...prev, { role: 'system', content: text, timestamp: new Date() }]);
   };
 
+  // Client Tools State
+  const [activeImage, setActiveImage] = useState(null);
+  const [highlight, setHighlight] = useState(null);
+
   // --- ACTIONS ---
 
   const handleConnect = async () => {
@@ -89,6 +92,47 @@ function App() {
         signedUrl: url,
         dynamicVariables: {
           first_name: "User",
+        },
+        clientTools: {
+          showImageOnScreen: async ({ imagePath }) => {
+            console.log("[ClientTool] showImageOnScreen:", imagePath);
+            const finalUrl = imagePath.startsWith('http') || imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+            setActiveImage({ url: finalUrl, title: imagePath });
+            addSystemMessage(`📷 Showing Image: ${imagePath}`);
+            return "Image displayed successfully";
+          },
+          pointObjectInImage: async ({ query }) => {
+            console.log("[ClientTool] pointObjectInImage:", query);
+            addSystemMessage(`🔍 Pointing at object: ${query}`);
+
+            if (!activeImage) {
+              return "No active image to point at.";
+            }
+
+            try {
+              const response = await axios.post(`${backendUrl}/api/v1/vision/point`, {
+                filename: activeImage.title,
+                object: query,
+                max_points: 1
+              }, {
+                headers: { 'xi-api-key': apiKey }
+              });
+
+              const { points, count } = response.data;
+              if (count > 0 && points[0]) {
+                const { x, y } = points[0];
+                addSystemMessage(`✅ Found ${query} at [${x}, ${y}]`);
+                setHighlight({ x, y, label: query });
+                setTimeout(() => setHighlight(null), 5000);
+                return `Found ${query} at coordinates ${x},${y}`;
+              } else {
+                return `Could not find ${query} in the image.`;
+              }
+            } catch (err) {
+              console.error("Vision API Error:", err);
+              return `Failed to point: ${err.message}`;
+            }
+          }
         }
       });
 
@@ -101,6 +145,7 @@ function App() {
 
   const handleDisconnect = async () => {
     await conversation.endSession();
+    setActiveImage(null);
   };
 
   const handleSend = async () => {
@@ -127,16 +172,6 @@ function App() {
       });
       const config = agentResp.data.conversation_config?.agent;
       setSystemPrompt(config?.prompt?.prompt || "");
-
-      // Load LLM if present
-      if (config?.prompt?.llm) {
-        const modelId = config.prompt.llm;
-        setLlmModel(modelId);
-        // Infer provider for UI
-        if (modelId.startsWith('gemini')) setLlmProvider('gemini');
-        else if (modelId.startsWith('claude')) setLlmProvider('anthropic');
-        else setLlmProvider('openai');
-      }
 
       const currentKBs = config?.knowledge_base || [];
       const currentKBMap = {};
@@ -173,8 +208,7 @@ function App() {
         conversation_config: {
           agent: {
             prompt: {
-              prompt: systemPrompt,
-              llm: llmModel
+              prompt: systemPrompt
             },
             knowledge_base: kbList
           }
@@ -212,6 +246,26 @@ function App() {
       else setKbContent("(Content not viewable via API)");
     } catch (e) {
       setKbContent("(Could not load content)");
+    }
+  };
+
+  const handleRenameKB = async (id, newName) => {
+    try {
+      await axios.patch(`https://api.elevenlabs.io/v1/convai/knowledge-base/${id}`, {
+        name: newName
+      }, {
+        headers: { 'xi-api-key': apiKey }
+      });
+      alert("Renamed successfully!");
+      // Update local state
+      setSelectedKBMap(prev => {
+        const next = { ...prev };
+        if (next[id]) next[id].name = newName;
+        return next;
+      });
+      refreshKBList();
+    } catch (e) {
+      alert("Failed to rename: " + e.message);
     }
   };
 
@@ -270,9 +324,37 @@ function App() {
           ))}
         </div>
 
-        <div className="input-area">
+
+
+        {activeImage && (
+          <div className="image-preview-overlay">
+            <div className="image-card">
+              <img src={activeImage.url} alt={activeImage.title} />
+              {highlight && (
+                <div style={{
+                  position: 'absolute',
+                  left: `${highlight.x * 100}%`,
+                  top: `${highlight.y * 100}%`,
+                  width: '20px',
+                  height: '20px',
+                  backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                  border: '2px solid red',
+                  borderRadius: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                  boxShadow: '0 0 10px rgba(255,0,0,0.8)'
+                }} />
+              )}
+              <div className="image-caption">{activeImage.title}</div>
+              <button className="close-btn" onClick={() => setActiveImage(null)}>×</button>
+            </div>
+          </div>
+        )}
+
+        <div className="input-area" id="chat-input-area">
           <button className="btn-icon"><ImageIcon size={20} /></button>
           <input
+            id="chat-input"
             className="msg-input"
             placeholder="Message..."
             value={inputText}
@@ -280,7 +362,7 @@ function App() {
             onKeyDown={handleKeyPress}
             disabled={connectionStatus !== 'connected'}
           />
-          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || !inputText.trim()} className="btn-primary">
+          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || !inputText.trim()} className="btn-primary" id="send-btn">
             <Send size={18} />
           </button>
         </div>
@@ -297,7 +379,7 @@ function App() {
                   <RefreshCw size={18} className={isLoadingConfig ? "spin" : ""} />
                 </button>
                 <button onClick={saveConfig} className="btn-primary">
-                  <Save size={16} /> SAVE CHANGES
+                  <Save size={16} /> UPDATE AGENT SETTINGS
                 </button>
               </div>
             </div>
@@ -326,6 +408,19 @@ function App() {
             </div>
             <div className="editor-content">
               <div className="form-group">
+                <label className="form-label">Name</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    value={editingKB.name}
+                    onChange={e => setEditingKB({ ...editingKB, name: e.target.value })}
+                    style={{ flex: 1 }}
+                  />
+                  <button onClick={() => handleRenameKB(editingKB.id, editingKB.name)} className="btn-black" style={{ padding: '8px 12px' }}>
+                    Rename
+                  </button>
+                </div>
+              </div>
+              <div className="form-group">
                 <label className="form-label">ID</label>
                 <code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{editingKB.id}</code>
               </div>
@@ -334,7 +429,7 @@ function App() {
                 <span className="badge">{editingKB.type}</span>
               </div>
               <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <label className="form-label">Content Preview</label>
+                <label className="form-label">Content (Read-Only Preview)</label>
                 <div className="content-preview">
                   {kbContent}
                 </div>
@@ -369,46 +464,32 @@ function App() {
             <input value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="agent-id" />
           </div>
 
+          <button
+            className="btn-black"
+            style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}
+            onClick={() => {
+              sessionStorage.setItem("xi-api-key", apiKey);
+              sessionStorage.setItem("xi-agent-id", agentId);
+              alert("Credentials saved to session!");
+            }}
+          >
+            Set Credentials
+          </button>
+
           <div className="separator" style={{ height: '1px', background: '#e2e8f0', margin: '15px 0' }} />
 
-          <div className="form-group">
-            <label className="form-label">Service</label>
-            <select
-              value={llmProvider}
-              onChange={e => setLlmProvider(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                background: '#fff',
-                fontSize: '13px'
-              }}
-            >
-              <option value="openai">OpenAI</option>
-              <option value="gemini">Gemini</option>
-              <option value="anthropic">Anthropic</option>
+          {/* Non-functional LLM Fields */}
+          <div className="form-group" style={{ opacity: 0.6 }}>
+            <label className="form-label">Service (Managed by Agent)</label>
+            <select disabled style={{ width: '100%', padding: '8px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+              <option>Default Provider</option>
             </select>
           </div>
-          <div className="form-group">
-            <label className="form-label">Model ID</label>
-            <input
-              value={llmModel}
-              onChange={e => setLlmModel(e.target.value)}
-              placeholder="e.g. gpt-4o"
-              style={{
-                width: '100%',
-                padding: '8px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                background: '#fff',
-                fontSize: '13px'
-              }}
-            />
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-              Must be a valid Model ID (e.g. <code>gpt-4o</code>)
-            </div>
+          <div className="form-group" style={{ opacity: 0.6 }}>
+            <label className="form-label">Model ID (Managed by Agent)</label>
+            <input disabled placeholder="Managed by Agent Settings" style={{ width: '100%', padding: '8px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0' }} />
           </div>
+
         </div>
 
         {/* KB List */}
@@ -447,7 +528,7 @@ function App() {
         </div>
 
       </div>
-    </div>
+    </div >
   )
 }
 
