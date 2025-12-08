@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@elevenlabs/react": "^0.12.1",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.87.0",
     "@tailwindcss/postcss": "^4.1.17",
     "autoprefixer": "^10.4.22",
     "axios": "^1.13.2",
