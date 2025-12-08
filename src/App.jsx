@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
-import { Mic, Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Plus, Eye, EyeOff } from 'lucide-react';
-import './App.css'; // Import the new CSS
+import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import './App.css';
+import MemoryViewer from './components/MemoryViewer';
+import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
+import { TEST_USER_ID, TEST_SESSION_ID } from './constants';
 
 // Default Config
 const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
@@ -34,10 +37,16 @@ function App() {
   const [selectedKBMap, setSelectedKBMap] = useState({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
-  // KB Editor State
   const [editingKB, setEditingKB] = useState(null);
   const [kbContent, setKbContent] = useState("");
   const [isSavingKB, setIsSavingKB] = useState(false);
+
+  const [memoryExpanded, setMemoryExpanded] = useState(false);
+  const [memoryTab, setMemoryTab] = useState('session');
+  const [sessionMemories, setSessionMemories] = useState([]);
+  const [globalMemories, setGlobalMemories] = useState([]);
+  const [isLoadingMemories, setIsLoadingMemories] = useState(false);
+  const [hasLoadedMemoriesOnce, setHasLoadedMemoriesOnce] = useState(false);
 
   // --- ELEVENLABS HOOK ---
   const conversation = useConversation({
@@ -81,9 +90,38 @@ function App() {
   // Client Tools State
   const [activeImage, setActiveImage] = useState(null);
   const [highlight, setHighlight] = useState(null);
-
+    
+  const loadMemories = async () => {
+    // Only show loading state on the first fetch
+    if (!hasLoadedMemoriesOnce) {
+      setIsLoadingMemories(true);
+    }
+    try {
+      const [sessionData, globalData] = await Promise.all([
+        fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID),
+        fetchGlobalMemories(TEST_USER_ID)
+      ]);
+      
+      // Always update memories (background updates won't show loading)
+      setSessionMemories(sessionData.memories || []);
+      setGlobalMemories(globalData.memories || []);
+      
+      // Mark as loaded after first successful fetch
+      if (!hasLoadedMemoriesOnce) {
+        setHasLoadedMemoriesOnce(true);
+      }
+    } catch (error) {
+      console.error('Failed to load memories:', error);
+      // Don't clear existing memories on error
+    } finally {
+      // Only clear loading state on first fetch
+      if (!hasLoadedMemoriesOnce) {
+        setIsLoadingMemories(false);
+      }
+    }
+  };
+  
   // --- ACTIONS ---
-
   const handleConnect = async () => {
     if (!agentId) return alert("Please enter an Agent ID first");
 
@@ -335,6 +373,19 @@ function App() {
     sessionStorage.setItem("xi-agent-id", agentId);
   }, [apiKey, agentId]);
 
+  useEffect(() => {
+    loadMemories();
+
+    const pollingInterval = setInterval(() => {
+      loadMemories();
+    }, 8000);
+
+    return () => {
+      clearInterval(pollingInterval);
+      clearMemoryCache();
+    };
+  }, []);
+
   return (
     <div className="app-container">
 
@@ -444,6 +495,18 @@ function App() {
               placeholder="Load config to edit system prompt..."
             />
             <div className="char-count">{systemPrompt.length} chars</div>
+
+            <MemoryViewer
+              isExpanded={memoryExpanded}
+              onToggle={() => setMemoryExpanded(!memoryExpanded)}
+              activeTab={memoryTab}
+              onTabChange={setMemoryTab}
+              sessionMemories={sessionMemories}
+              globalMemories={globalMemories}
+              isLoading={isLoadingMemories}
+              sessionId={TEST_SESSION_ID}
+              userId={TEST_USER_ID}
+            />
           </>
         ) : (
           <>

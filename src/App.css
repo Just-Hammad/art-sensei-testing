@@ -676,3 +676,194 @@ button:disabled {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   padding: 0;
 }
+
+.memory-viewer {
+  border: 1px solid #e2e8f0;
+  background: #fafbfc;
+  margin-top: 0;
+  overflow: hidden;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.memory-viewer.collapsed {
+  max-height: 48px;
+}
+
+.memory-viewer.expanded {
+  max-height: 50vh;
+}
+
+.memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.memory-header:hover {
+  background-color: #f1f5f9;
+}
+
+.memory-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #1e293b;
+}
+
+.memory-ids {
+  margin-left: auto;
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: #94a3b8;
+  font-family: monospace;
+  cursor: help;
+  transition: color 0.2s ease;
+}
+
+.memory-ids:hover {
+  color: #64748b;
+}
+
+.memory-body {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(50vh - 48px);
+  overflow: hidden;
+}
+
+.memory-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.memory-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 0.813rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.memory-tab:hover {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.memory-tab.active {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.memory-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: #2563eb;
+  color: white;
+  border-radius: 10px;
+  font-size: 0.688rem;
+  font-weight: 600;
+}
+
+.memory-tab.active .memory-count {
+  background: #1d4ed8;
+}
+
+.memory-content-area {
+  flex: 1;
+  overflow-y: auto;
+  background: white;
+}
+
+.memory-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memory-item {
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.813rem;
+  transition: all 0.2s ease;
+}
+
+.memory-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.memory-content {
+  color: #1e293b;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.memory-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.metadata-tag {
+  display: inline-flex;
+  padding: 2px 8px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.688rem;
+  color: #64748b;
+}
+
+.memory-loading,
+.memory-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.memory-content-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.memory-content-area::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.memory-content-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.memory-content-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
