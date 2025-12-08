@@ -135,18 +135,12 @@ function App() {
       });
       const { signedUrl: url } = resp.data;
 
-      // Generate a temporary user ID for this session
-      const tempUserId = `user_TESTING_ARTSENSEI`;
-      const tempChatId = `chat_TESTING_ARTSENSEI`;
-
-      console.log("[Connect] Starting session with:", { tempUserId, tempChatId });
-
       await conversation.startSession({
         signedUrl: url,
         connectionType: "websocket",
         customLlmExtraBody: {
-          chatId: tempChatId,
-          userId: tempUserId,
+          chatId: TEST_SESSION_ID,
+          userId: TEST_USER_ID,
         },
         dynamicVariables: {
           first_name: "User",
