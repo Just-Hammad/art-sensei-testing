@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
-import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
@@ -53,6 +53,13 @@ function App() {
   const [isLoadingMemories, setIsLoadingMemories] = useState(false);
   const [hasLoadedMemoriesOnce, setHasLoadedMemoriesOnce] = useState(false);
 
+  // Image Upload State
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef(null);
+  const chatPanelRef = useRef(null);
+
   // --- ELEVENLABS HOOK ---
   const conversation = useConversation({
     onConnect: () => {
@@ -80,8 +87,8 @@ function App() {
   });
 
   // --- HELPERS ---
-  const addMessage = (role, content) => {
-    setMessages(prev => [...prev, { role, content, timestamp: new Date() }]);
+  const addMessage = (role, content, attachments = []) => {
+    setMessages(prev => [...prev, { role, content, attachments, timestamp: new Date() }]);
   };
 
   const addSystemMessage = (text) => {
@@ -90,6 +97,89 @@ function App() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const uploadImageToBackend = async (file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('conversation_id', TEST_SESSION_ID);
+    formData.append('user_id', TEST_USER_ID);
+
+    const response = await axios.post(`${backendUrl}/api/v1/images/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  };
+
+  const handleFileSelect = async (files) => {
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+    try {
+      const uploadPromises = Array.from(files)
+        .filter(file => file.type.startsWith('image/'))
+        .map(async (file) => {
+          const result = await uploadImageToBackend(file);
+          return {
+            localUrl: URL.createObjectURL(file),
+            serverUrl: result.public_image_url,
+            fileName: file.name
+          };
+        });
+
+      const newImages = await Promise.all(uploadPromises);
+      setUploadedImages(prev => [...prev, ...newImages]);
+    } catch (error) {
+      console.error('Failed to upload images:', error);
+      addSystemMessage('Failed to upload images. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleImageButtonClick = () => {
+    if (connectionStatus === 'connected') {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    handleFileSelect(e.target.files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (connectionStatus === 'connected') {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (connectionStatus === 'connected') {
+      handleFileSelect(e.dataTransfer.files);
+    }
+  };
+
+  const removeUploadedImage = (index) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   // Client Tools State
@@ -242,23 +332,34 @@ function App() {
     console.log(`[Disconnect] Disconnecting from agent: ${agentName}`);
     await conversation.endSession();
     setActiveImage(null);
-    setAgentName(""); // Clear agent name on disconnect
+    setAgentName("");
+    setIsWaitingForResponse(false);
     console.log(`[Disconnect] Successfully disconnected`);
   };
 
   const handleSend = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && uploadedImages.length === 0) return;
     if (connectionStatus !== 'connected') {
       console.error("Cannot send message: Not connected to ElevenLabs");
       return;
     }
     
     try {
-      addMessage('user', inputText);
+      const messageContent = inputText.trim() || "[Image(s) uploaded]";
+      const imageUrls = uploadedImages.map(img => img.serverUrl);
+      
+      // Pass attachments to the message
+      addMessage('user', messageContent, uploadedImages);
       setInputText("");
+      setUploadedImages([]);
       setIsWaitingForResponse(true);
       
-      await conversation.sendUserMessage(inputText);
+      if (imageUrls.length > 0) {
+        const messageWithImages = `${messageContent}\n\nImages: ${imageUrls.join(', ')}`;
+        await conversation.sendUserMessage(messageWithImages);
+      } else {
+        await conversation.sendUserMessage(messageContent);
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
       addSystemMessage(`Failed to send message: ${error.message}`);
@@ -267,7 +368,11 @@ function App() {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') handleSend();
+    if (e.key === 'Enter') {
+      if (connectionStatus === 'connected' && !isUploadingImage && (inputText.trim() || uploadedImages.length > 0)) {
+        handleSend();
+      }
+    }
   };
 
   // --- ADMIN & KB ACTIONS ---
@@ -451,11 +556,60 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isDraggingOver) {
+        setIsDraggingOver(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      setIsDraggingOver(false);
+    };
+
+    const handleDragEnd = () => {
+      setIsDraggingOver(false);
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('dragend', handleDragEnd);
+    document.addEventListener('dragleave', (e) => {
+      if (e.clientX === 0 && e.clientY === 0) {
+        setIsDraggingOver(false);
+      }
+    });
+
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('dragend', handleDragEnd);
+    };
+  }, [isDraggingOver]);
+
   return (
-    <div className="app-container">
+    <div className="app-container" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileInputChange}
+        style={{ display: 'none' }}
+      />
+
+      {isDraggingOver && (
+        <div className="drag-overlay">
+          <div className="drag-content">
+            <ImageIcon size={64} strokeWidth={1.5} />
+            <p>Drop images here</p>
+          </div>
+        </div>
+      )}
 
       {/* COLUMN 1: CHAT (Left) */}
-      <div className="panel chat-panel">
+      <div className="panel chat-panel" ref={chatPanelRef}>
         <div className="header">
           <h2 className="header-title">
             <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'connecting' ? 'connecting' : 'disconnected'}`} />
@@ -479,7 +633,42 @@ function App() {
         <div className="messages-list">
           {messages.map((msg, i) => (
             <div key={i} className={`message-row ${msg.role}`}>
-              <div className={`message-bubble ${msg.role}`}>{msg.content}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '75%' }}>
+                {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px', justifyContent: 'flex-end' }}>
+                    {msg.attachments.map((attachment, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          width: '60px',
+                          height: '60px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          border: '2px solid #e2e8f0',
+                          cursor: 'pointer',
+                        }}
+                        // onClick={() => {
+                        //   const finalUrl = attachment.serverUrl || attachment.localUrl;
+                        //   if (finalUrl) {
+                        //     setActiveImage({ url: finalUrl, title: attachment.fileName || 'Uploaded Image' });
+                        //   }
+                        // }}
+                      >
+                        <img
+                          src={attachment.localUrl || attachment.serverUrl}
+                          alt={attachment.fileName || 'attachment'}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className={`message-bubble ${msg.role}`}>{msg.content}</div>
+              </div>
             </div>
           ))}
           {isWaitingForResponse && (
@@ -524,8 +713,49 @@ function App() {
           </div>
         )}
 
+        {uploadedImages.length > 0 && (
+          <div style={{ padding: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid #e2e8f0' }}>
+            {uploadedImages.map((img, index) => (
+              <div key={index} style={{ position: 'relative', width: '60px', height: '60px' }}>
+                <img src={img.localUrl} alt={img.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }} />
+                <button
+                  onClick={() => removeUploadedImage(index)}
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    width: '20px',
+                    height: '20px',
+                    minWidth: '20px',
+                    minHeight: '20px',
+                    padding: '0',
+                    borderRadius: '50%',
+                    background: '#dc2626',
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: '1'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="input-area" id="chat-input-area">
-          <button className="btn-icon"><ImageIcon size={20} /></button>
+          <button className="btn-icon" onClick={handleImageButtonClick} disabled={connectionStatus !== 'connected' || isUploadingImage}>
+            {isUploadingImage ? (
+              <Loader2 size={20} className="spin" />
+            ) : (
+              <ImageIcon size={20} />
+            )}
+          </button>
           <input
             id="chat-input"
             className="msg-input"
@@ -535,7 +765,7 @@ function App() {
             onKeyDown={handleKeyPress}
             disabled={connectionStatus !== 'connected'}
           />
-          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || !inputText.trim()} className="btn-primary" id="send-btn">
+          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || isUploadingImage || (!inputText.trim() && uploadedImages.length === 0)} className="btn-primary" id="send-btn">
             <Send size={18} />
           </button>
         </div>
