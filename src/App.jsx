@@ -18,6 +18,9 @@ function App() {
   // Security Update: Use sessionStorage (clears when tab closes) instead of localStorage
   const [apiKey, setApiKey] = useState(sessionStorage.getItem("xi-api-key") || import.meta.env.VITE_ELEVENLABS_API_KEY || "");
   const [agentId, setAgentId] = useState(sessionStorage.getItem("xi-agent-id") || import.meta.env.VITE_AGENT_ID || "");
+  const [configAgentName, setConfigAgentName] = useState("");
+  const [isFetchingAgentName, setIsFetchingAgentName] = useState(false);
+  const [isHoveringAgentName, setIsHoveringAgentName] = useState(false);
 
   // UI State
   const [showApiKey, setShowApiKey] = useState(false);
@@ -27,6 +30,7 @@ function App() {
   const [inputText, setInputText] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [agentName, setAgentName] = useState("");
   const messagesEndRef = useRef(null);
 
   // Admin State
@@ -122,11 +126,41 @@ function App() {
   };
   
   // --- ACTIONS ---
+  const fetchAgentName = async () => {
+    try {
+      console.log(`[Agent Info] Fetching agent details for agent ID: ${agentId}`);
+      const response = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+        headers: { 'xi-api-key': apiKey }
+      });
+      
+      const agentData = response.data;
+      const fetchedName = agentData.name || "Unknown Agent";
+      
+      console.log(`[Agent Info] Successfully fetched agent name: ${fetchedName}`);
+      console.log(`[Agent Info] Full agent data:`, agentData);
+      
+      setAgentName(fetchedName);
+      return fetchedName;
+    } catch (error) {
+      console.error(`[Agent Info] Failed to fetch agent details:`, error);
+      setAgentName("Unknown Agent");
+      return "Unknown Agent";
+    }
+  };
+
   const handleConnect = async () => {
     if (!agentId) return alert("Please enter an Agent ID first");
 
     setConnectionStatus("connecting");
     try {
+      console.log(`[Connect] Starting connection process for agent: ${agentId}`);
+      
+      // Fetch agent name first
+      const fetchedAgentName = await fetchAgentName();
+      console.log(`[Connect] Agent name retrieved: ${fetchedAgentName}`);
+      
+      // Get signed URL
+      console.log(`[Connect] Fetching signed URL from backend...`);
       const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`, {
         headers: {
           'xi-api-key': apiKey,
@@ -134,7 +168,10 @@ function App() {
         }
       });
       const { signedUrl: url } = resp.data;
+      console.log(`[Connect] Signed URL obtained successfully`);
 
+      // Start the conversation session
+      console.log(`[Connect] Starting conversation session...`);
       await conversation.startSession({
         signedUrl: url,
         connectionType: "websocket",
@@ -190,18 +227,22 @@ function App() {
         }
       });
 
-      console.log("[Connect] Session started successfully");
+      console.log(`[Connect] Session started successfully with agent: ${fetchedAgentName}`);
 
     } catch (err) {
       console.error("[Connect] Error:", err);
       setConnectionStatus("error");
       addSystemMessage(`Connection Failed: ${err.message}`);
+      setAgentName(""); // Clear agent name on error
     }
   };
 
   const handleDisconnect = async () => {
+    console.log(`[Disconnect] Disconnecting from agent: ${agentName}`);
     await conversation.endSession();
     setActiveImage(null);
+    setAgentName(""); // Clear agent name on disconnect
+    console.log(`[Disconnect] Successfully disconnected`);
   };
 
   const handleSend = async () => {
@@ -368,6 +409,33 @@ function App() {
   }, [apiKey, agentId]);
 
   useEffect(() => {
+    setConfigAgentName("");
+    
+    if (!agentId || !apiKey) {
+      return;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      setIsFetchingAgentName(true);
+      try {
+        const response = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+          headers: { 'xi-api-key': apiKey }
+        });
+        const agentData = response.data;
+        const fetchedName = agentData.name || "";
+        setConfigAgentName(fetchedName);
+      } catch (error) {
+        console.error('Failed to fetch agent name:', error);
+        setConfigAgentName("");
+      } finally {
+        setIsFetchingAgentName(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [agentId, apiKey]);
+
+  useEffect(() => {
     loadMemories();
 
     const pollingInterval = setInterval(() => {
@@ -388,8 +456,11 @@ function App() {
         <div className="header">
           <h2 className="header-title">
             <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'connecting' ? 'connecting' : 'disconnected'}`} />
-            Chat
-            {connectionStatus === 'connected' && <span className="status-badge">Live</span>}
+            {connectionStatus === 'connected' && agentName ? (
+              <span className="agent-name-badge">{agentName}</span>
+            ) : (
+              'Chat'
+            )}
           </h2>
           <div className="actions">
             {connectionStatus !== 'connected' ? (
@@ -571,7 +642,31 @@ function App() {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Agent ID</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label className="form-label" style={{ margin: 0 }}>Agent ID</label>
+              {configAgentName && (
+                <span 
+                  className="config-agent-name" 
+                  onMouseEnter={() => setIsHoveringAgentName(true)}
+                  onMouseLeave={() => setIsHoveringAgentName(false)}
+                  style={{
+                    fontSize: '10px',
+                    color: '#64748b',
+                    maxWidth: isHoveringAgentName ? 'none' : '120px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    cursor: 'default',
+                    transition: 'max-width 0.2s ease'
+                  }}
+                >
+                  {isHoveringAgentName ? configAgentName : (configAgentName.length > 25 ? configAgentName.slice(0, 25) + '...' : configAgentName)}
+                </span>
+              )}
+              {isFetchingAgentName && (
+                <div className="spinner-sm"></div>
+              )}
+            </div>
             <input value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="agent-id" />
           </div>
 
