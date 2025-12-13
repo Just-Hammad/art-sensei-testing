@@ -248,6 +248,34 @@ html {
   color: var(--text-scnd);
 }
 
+/* Agent Name Badge */
+.agent-name-badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  margin-left: 12px;
+  margin-right: 8px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -866,4 +894,20 @@ button:disabled {
 
 .memory-content-area::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.spinner-sm {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
