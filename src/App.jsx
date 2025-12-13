@@ -15,9 +15,10 @@ const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
 function App() {
   // --- STATE ---
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND);
-  // Security Update: Use sessionStorage (clears when tab closes) instead of localStorage
   const [apiKey, setApiKey] = useState(sessionStorage.getItem("xi-api-key") || import.meta.env.VITE_ELEVENLABS_API_KEY || "");
   const [agentId, setAgentId] = useState(sessionStorage.getItem("xi-agent-id") || import.meta.env.VITE_AGENT_ID || "");
+  const [savedApiKey, setSavedApiKey] = useState("");
+  const [savedAgentId, setSavedAgentId] = useState("");
   const [configAgentName, setConfigAgentName] = useState("");
   const [isFetchingAgentName, setIsFetchingAgentName] = useState(false);
   const [isHoveringAgentName, setIsHoveringAgentName] = useState(false);
@@ -404,9 +405,11 @@ function App() {
   }, [messages, isWaitingForResponse]);
 
   useEffect(() => {
-    sessionStorage.setItem("xi-api-key", apiKey);
-    sessionStorage.setItem("xi-agent-id", agentId);
-  }, [apiKey, agentId]);
+    const storedApiKey = sessionStorage.getItem("xi-api-key") || import.meta.env.VITE_ELEVENLABS_API_KEY || "";
+    const storedAgentId = sessionStorage.getItem("xi-agent-id") || import.meta.env.VITE_AGENT_ID || "";
+    setSavedApiKey(storedApiKey);
+    setSavedAgentId(storedAgentId);
+  }, []);
 
   useEffect(() => {
     setConfigAgentName("");
@@ -676,8 +679,11 @@ function App() {
             onClick={() => {
               sessionStorage.setItem("xi-api-key", apiKey);
               sessionStorage.setItem("xi-agent-id", agentId);
+              setSavedApiKey(apiKey);
+              setSavedAgentId(agentId);
               alert("Credentials saved to session!");
             }}
+            disabled={apiKey === savedApiKey && agentId === savedAgentId}
           >
             Set Credentials
           </button>
