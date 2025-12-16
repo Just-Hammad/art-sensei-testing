@@ -3,7 +3,6 @@ import { X, Copy, Plus, AlertCircle } from 'lucide-react';
 import './Dialogue.css';
 
 const EXAMPLE_TEXT = `---
-
 ## Contextual Knowledge Integration (INTERNAL ONLY)
 
 ### Session Awareness
