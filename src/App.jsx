@@ -4,6 +4,7 @@ import { useConversation } from '@elevenlabs/react';
 import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
+import Dialogue from './components/Dialogue';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
 import { TEST_USER_ID, TEST_SESSION_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
@@ -37,7 +38,7 @@ function App() {
 
   // Admin State
   const [systemPrompt, setSystemPrompt] = useState("");
-
+  const [showDialogue, setShowDialogue] = useState(false);
 
   const [availableKBs, setAvailableKBs] = useState([]);
   const [selectedKBMap, setSelectedKBMap] = useState({});
@@ -448,8 +449,18 @@ function App() {
     setAvailableKBs(kbResp.data.documents || []);
   };
 
+  const hasRequiredVariables = (prompt) => {
+    return prompt.includes('{{session_context}}') && prompt.includes('{{global_context}}');
+  };
+
   const saveConfig = async () => {
     if (!apiKey || !agentId) return;
+
+    if (!hasRequiredVariables(systemPrompt)) {
+      setShowDialogue(true);
+      return;
+    }
+
     setIsSavingConfig(true);
     try {
       const kbList = Object.values(selectedKBMap).map(kb => ({
@@ -541,6 +552,11 @@ function App() {
     } catch (e) {
       alert("Failed to delete: " + e.message);
     }
+  };
+
+  const handleAppendExample = (exampleText) => {
+    setSystemPrompt(prev => prev + "\n\n" + exampleText);
+    setShowDialogue(false);
   };
 
 
@@ -672,7 +688,7 @@ function App() {
         <div className="messages-list">
           {messages.map((msg, i) => (
             <div key={i} className={`message-row ${msg.role}`}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '75%' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '100%' }}>
                 {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px', justifyContent: 'flex-end' }}>
                     {msg.attachments.map((attachment, idx) => (
@@ -820,7 +836,7 @@ function App() {
                 <button onClick={loadConfig} disabled={isLoadingConfig} className="btn-icon">
                   <RefreshCw size={18} className={isLoadingConfig ? "spin" : ""} />
                 </button>
-                <button onClick={saveConfig} disabled={!systemPrompt.trim() || isSavingConfig} className="btn-primary">
+                <button onClick={saveConfig} disabled={!systemPrompt.trim() || isSavingConfig || !apiKey || !agentId} className="btn-primary">
                   <Save size={16} /> {isSavingConfig ? 'UPDATING...' : 'UPDATE AGENT SETTINGS'}
                 </button>
               </div>
@@ -1009,6 +1025,13 @@ function App() {
         </div>
 
       </div>
+
+      {showDialogue && (
+        <Dialogue
+          onClose={() => setShowDialogue(false)}
+          onAppend={handleAppendExample}
+        />
+      )}
     </div >
   )
 }
