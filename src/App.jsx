@@ -5,7 +5,7 @@ import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSqu
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
-import { TEST_USER_ID, TEST_SESSION_ID } from './constants';
+import { TEST_USER_ID, TEST_SESSION_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
 
 // Default Config
@@ -187,7 +187,7 @@ function App() {
   // Client Tools State
   const [activeImage, setActiveImage] = useState(null);
   const [highlight, setHighlight] = useState(null);
-    
+
   const loadMemories = async () => {
     // Only show loading state on the first fetch
     if (!hasLoadedMemoriesOnce) {
@@ -198,11 +198,11 @@ function App() {
         fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID),
         fetchGlobalMemories(TEST_USER_ID)
       ]);
-      
+
       // Always update memories (background updates won't show loading)
       setSessionMemories(sessionData.memories || []);
       setGlobalMemories(globalData.memories || []);
-      
+
       // Mark as loaded after first successful fetch
       if (!hasLoadedMemoriesOnce) {
         setHasLoadedMemoriesOnce(true);
@@ -217,7 +217,7 @@ function App() {
       }
     }
   };
-  
+
   // --- ACTIONS ---
   const fetchAgentName = async () => {
     try {
@@ -225,19 +225,34 @@ function App() {
       const response = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
         headers: { 'xi-api-key': apiKey }
       });
-      
+
       const agentData = response.data;
-      const fetchedName = agentData.name || "Unknown Agent";
-      
-      console.log(`[Agent Info] Successfully fetched agent name: ${fetchedName}`);
+      let fetchedName = agentData.name;
+
+      if (!fetchedName) {
+        const localAgent = agents.find(agent => agent.id === agentId);
+        if (localAgent) {
+          fetchedName = localAgent.name;
+          console.log(`[Agent Info] Using local agent name: ${fetchedName}`);
+        } else fetchedName = "Unknown Agent";
+
+      } else
+        console.log(`[Agent Info] Successfully fetched agent name from API: ${fetchedName}`);
+
+
       console.log(`[Agent Info] Full agent data:`, agentData);
-      
+
       setAgentName(fetchedName);
       return fetchedName;
     } catch (error) {
       console.error(`[Agent Info] Failed to fetch agent details:`, error);
-      setAgentName("Unknown Agent");
-      return "Unknown Agent";
+      const localAgent = agents.find(agent => agent.id === agentId);
+      const fallbackName = localAgent ? localAgent.name : "Unknown Agent";
+      if (localAgent) {
+        console.log(`[Agent Info] Using local agent name after API error: ${fallbackName}`);
+      }
+      setAgentName(fallbackName);
+      return fallbackName;
     }
   };
 
@@ -247,22 +262,22 @@ function App() {
     setConnectionStatus("connecting");
     try {
       console.log(`[Connect] Starting connection process for agent: ${agentId}`);
-      
+
       // Fetch agent name first
       const fetchedAgentName = await fetchAgentName();
       console.log(`[Connect] Agent name retrieved: ${fetchedAgentName}`);
-      
+
       console.log(`[Connect] Fetching memories before starting session...`);
       let sessionContext = "No prior session history.";
       let globalContext = "No long-term user knowledge available.";
-      
+
       try {
         const sessionData = await fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID);
         const globalData = await fetchGlobalMemories(TEST_USER_ID);
-        
+
         sessionContext = formatSessionContext(sessionData);
         globalContext = formatGlobalContext(globalData);
-        
+
         console.log(`[Connect] Memories loaded:`, {
           sessionCount: sessionData?.memories?.length || 0,
           globalCount: globalData?.memories?.length || 0
@@ -270,7 +285,7 @@ function App() {
       } catch (memErr) {
         console.error(`[Connect] Failed to fetch memories:`, memErr);
       }
-      
+
       // Get signed URL
       console.log(`[Connect] Fetching signed URL from backend...`);
       const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`, {
@@ -364,17 +379,17 @@ function App() {
       console.error("Cannot send message: Not connected to ElevenLabs");
       return;
     }
-    
+
     try {
       const messageContent = inputText.trim() || "[Image(s) uploaded]";
       const imageUrls = uploadedImages.map(img => img.serverUrl);
-      
+
       // Pass attachments to the message
       addMessage('user', messageContent, uploadedImages);
       setInputText("");
       setUploadedImages([]);
       setIsWaitingForResponse(true);
-      
+
       if (imageUrls.length > 0) {
         const messageWithImages = `${messageContent}\n\nImages: ${imageUrls.join(', ')}`;
         await conversation.sendUserMessage(messageWithImages);
@@ -542,7 +557,7 @@ function App() {
 
   useEffect(() => {
     setConfigAgentName("");
-    
+
     if (!agentId || !apiKey) {
       return;
     }
@@ -671,12 +686,12 @@ function App() {
                           border: '2px solid #e2e8f0',
                           cursor: 'pointer',
                         }}
-                        // onClick={() => {
-                        //   const finalUrl = attachment.serverUrl || attachment.localUrl;
-                        //   if (finalUrl) {
-                        //     setActiveImage({ url: finalUrl, title: attachment.fileName || 'Uploaded Image' });
-                        //   }
-                        // }}
+                      // onClick={() => {
+                      //   const finalUrl = attachment.serverUrl || attachment.localUrl;
+                      //   if (finalUrl) {
+                      //     setActiveImage({ url: finalUrl, title: attachment.fileName || 'Uploaded Image' });
+                      //   }
+                      // }}
                       >
                         <img
                           src={attachment.localUrl || attachment.serverUrl}
@@ -902,8 +917,8 @@ function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <label className="form-label" style={{ margin: 0 }}>Agent ID</label>
               {configAgentName && (
-                <span 
-                  className="config-agent-name" 
+                <span
+                  className="config-agent-name"
                   onMouseEnter={() => setIsHoveringAgentName(true)}
                   onMouseLeave={() => setIsHoveringAgentName(false)}
                   style={{
