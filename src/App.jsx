@@ -6,6 +6,7 @@ import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
 import { TEST_USER_ID, TEST_SESSION_ID } from './constants';
+import { formatSessionContext, formatGlobalContext } from './utils';
 
 // Default Config
 const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
@@ -41,6 +42,7 @@ function App() {
   const [availableKBs, setAvailableKBs] = useState([]);
   const [selectedKBMap, setSelectedKBMap] = useState({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   const [editingKB, setEditingKB] = useState(null);
   const [kbContent, setKbContent] = useState("");
@@ -250,6 +252,25 @@ function App() {
       const fetchedAgentName = await fetchAgentName();
       console.log(`[Connect] Agent name retrieved: ${fetchedAgentName}`);
       
+      console.log(`[Connect] Fetching memories before starting session...`);
+      let sessionContext = "No prior session history.";
+      let globalContext = "No long-term user knowledge available.";
+      
+      try {
+        const sessionData = await fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID);
+        const globalData = await fetchGlobalMemories(TEST_USER_ID);
+        
+        sessionContext = formatSessionContext(sessionData);
+        globalContext = formatGlobalContext(globalData);
+        
+        console.log(`[Connect] Memories loaded:`, {
+          sessionCount: sessionData?.memories?.length || 0,
+          globalCount: globalData?.memories?.length || 0
+        });
+      } catch (memErr) {
+        console.error(`[Connect] Failed to fetch memories:`, memErr);
+      }
+      
       // Get signed URL
       console.log(`[Connect] Fetching signed URL from backend...`);
       const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`, {
@@ -272,8 +293,8 @@ function App() {
         },
         dynamicVariables: {
           first_name: "User",
-          session_context: "No prior session history.",
-          global_context: "No long-term user knowledge available.",
+          session_context: sessionContext,
+          global_context: globalContext,
         },
         clientTools: {
           showImageOnScreen: async ({ imagePath }) => {
@@ -414,6 +435,7 @@ function App() {
 
   const saveConfig = async () => {
     if (!apiKey || !agentId) return;
+    setIsSavingConfig(true);
     try {
       const kbList = Object.values(selectedKBMap).map(kb => ({
         id: kb.id,
@@ -436,6 +458,8 @@ function App() {
       alert("Agent Configuration Saved!");
     } catch (err) {
       alert(`Save Failed: ${err.message}`);
+    } finally {
+      setIsSavingConfig(false);
     }
   };
 
@@ -781,8 +805,8 @@ function App() {
                 <button onClick={loadConfig} disabled={isLoadingConfig} className="btn-icon">
                   <RefreshCw size={18} className={isLoadingConfig ? "spin" : ""} />
                 </button>
-                <button onClick={saveConfig} className="btn-primary">
-                  <Save size={16} /> UPDATE AGENT SETTINGS
+                <button onClick={saveConfig} disabled={!systemPrompt.trim() || isSavingConfig} className="btn-primary">
+                  <Save size={16} /> {isSavingConfig ? 'UPDATING...' : 'UPDATE AGENT SETTINGS'}
                 </button>
               </div>
             </div>
