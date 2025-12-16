@@ -480,6 +480,22 @@ button:disabled {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+.btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-black {
   background: var(--primary-color);
   color: white;

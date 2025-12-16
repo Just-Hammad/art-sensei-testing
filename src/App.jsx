@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
-import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2, RotateCcw } from 'lucide-react';
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import Dialogue from './components/Dialogue';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
-import { TEST_USER_ID, TEST_SESSION_ID, agents } from './constants';
+import { TEST_USER_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
+import { createNewSession, saveSessionToStorage, initializeSession } from './services/sessionManager';
 
 // Default Config
 const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
@@ -59,6 +60,10 @@ function App() {
   const [isLoadingMemories, setIsLoadingMemories] = useState(false);
   const [hasLoadedMemoriesOnce, setHasLoadedMemoriesOnce] = useState(false);
 
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [isInitializingSession, setIsInitializingSession] = useState(true);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+
   // Image Upload State
   const [uploadedImages, setUploadedImages] = useState([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -108,7 +113,7 @@ function App() {
   const uploadImageToBackend = async (file) => {
     const formData = new FormData();
     formData.append('image', file);
-    formData.append('conversation_id', TEST_SESSION_ID);
+    formData.append('conversation_id', currentSessionId);
     formData.append('user_id', TEST_USER_ID);
 
     const response = await axios.post(`${backendUrl}/api/v1/images/upload`, formData, {
@@ -193,13 +198,16 @@ function App() {
   const [highlight, setHighlight] = useState(null);
 
   const loadMemories = async () => {
-    // Only show loading state on the first fetch
+    if (!currentSessionId) {
+      return;
+    }
+
     if (!hasLoadedMemoriesOnce) {
       setIsLoadingMemories(true);
     }
     try {
       const [sessionData, globalData] = await Promise.all([
-        fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID),
+        fetchSessionMemories(currentSessionId, TEST_USER_ID),
         fetchGlobalMemories(TEST_USER_ID)
       ]);
 
@@ -262,6 +270,7 @@ function App() {
 
   const handleConnect = async () => {
     if (!agentId) return alert("Please enter an Agent ID first");
+    if (!currentSessionId) return alert("Session not initialized. Please wait or create a new session.");
 
     setConnectionStatus("connecting");
     try {
@@ -276,7 +285,7 @@ function App() {
       let globalContext = "No long-term user knowledge available.";
 
       try {
-        const sessionData = await fetchSessionMemories(TEST_SESSION_ID, TEST_USER_ID);
+        const sessionData = await fetchSessionMemories(currentSessionId, TEST_USER_ID);
         const globalData = await fetchGlobalMemories(TEST_USER_ID);
 
         sessionContext = formatSessionContext(sessionData);
@@ -307,11 +316,11 @@ function App() {
         signedUrl: url,
         connectionType: "websocket",
         customLlmExtraBody: {
-          chatId: TEST_SESSION_ID,
+          chatId: currentSessionId,
           userId: TEST_USER_ID,
         },
         dynamicVariables: {
-          first_name: "User",
+          first_name: "there",
           session_context: sessionContext,
           global_context: globalContext,
         },
@@ -565,6 +574,29 @@ function App() {
     setShowDialogue(false);
   };
 
+  const handleCreateNewSession = async () => {
+    if (connectionStatus === 'connected') {
+      return;
+    }
+
+    setIsCreatingSession(true);
+    try {
+      const result = await createNewSession(TEST_USER_ID);
+      saveSessionToStorage(result.sessionId);
+      setCurrentSessionId(result.sessionId);
+      setSessionMemories([]);
+      setGlobalMemories([]);
+      setHasLoadedMemoriesOnce(false);
+      alert('New session created successfully!');
+      console.log('[New Session] Created:', result.sessionId);
+    } catch (error) {
+      console.error('[New Session] Failed to create:', error);
+      alert('Failed to create new session. Please try again.');
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
 
   useEffect(() => {
     scrollToBottom();
@@ -612,6 +644,28 @@ function App() {
   }, [agentId, apiKey]);
 
   useEffect(() => {
+    const initSession = async () => {
+      setIsInitializingSession(true);
+      try {
+        const sessionId = await initializeSession(TEST_USER_ID);
+        setCurrentSessionId(sessionId);
+        console.log('[App] Session initialized:', sessionId);
+      } catch (error) {
+        console.error('[App] Failed to initialize session:', error);
+        alert('Failed to initialize session. Please refresh the page.');
+      } finally {
+        setIsInitializingSession(false);
+      }
+    };
+
+    initSession();
+  }, []);
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      return;
+    }
+
     loadMemories();
 
     const pollingInterval = setInterval(() => {
@@ -622,7 +676,7 @@ function App() {
       clearInterval(pollingInterval);
       clearMemoryCache();
     };
-  }, []);
+  }, [currentSessionId]);
 
   useEffect(() => {
     const handleEscape = (e) => {
@@ -678,22 +732,40 @@ function App() {
 
       {/* COLUMN 1: CHAT (Left) */}
       <div className="panel chat-panel" ref={chatPanelRef}>
-        <div className="header">
-          <h2 className="header-title">
+        <div className="header" style={{ flexWrap: 'wrap', gap: '8px' }}>
+          <h2 className="header-title" style={{ minWidth: '0', flex: '1 1 auto', maxWidth: '100%' }}>
             <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'connecting' ? 'connecting' : 'disconnected'}`} />
             {connectionStatus === 'connected' && agentName ? (
-              <span className="agent-name-badge">{agentName}</span>
+              <span className="agent-name-badge" style={{ wordBreak: 'break-word', whiteSpace: 'normal', maxWidth: '100%' }}>{agentName}</span>
             ) : (
               'Chat'
             )}
           </h2>
-          <div className="actions">
+          <div className="actions" style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            {connectionStatus !== 'connected' && (
+              <button 
+                onClick={handleCreateNewSession} 
+                disabled={isCreatingSession || isInitializingSession}
+                className="btn-secondary"
+                title="Create New Session"
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {isCreatingSession ? (
+                  <>
+                    <Loader2 size={14} className="spin" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  'New Session'
+                )}
+              </button>
+            )}
             {connectionStatus !== 'connected' ? (
-              <button onClick={handleConnect} disabled={connectionStatus === 'connecting'} className="btn-black">
-                {connectionStatus === 'connecting' ? '...' : 'Connect'}
+              <button onClick={handleConnect} disabled={connectionStatus === 'connecting' || !currentSessionId || isInitializingSession} className="btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
               </button>
             ) : (
-              <button onClick={handleDisconnect} className="btn-red">Stop</button>
+              <button onClick={handleDisconnect} className="btn-red" style={{ whiteSpace: 'nowrap' }}>Stop</button>
             )}
           </div>
         </div>
@@ -880,7 +952,7 @@ function App() {
               sessionMemories={sessionMemories}
               globalMemories={globalMemories}
               isLoading={isLoadingMemories}
-              sessionId={TEST_SESSION_ID}
+              sessionId={currentSessionId}
               userId={TEST_USER_ID}
             />
           </>
