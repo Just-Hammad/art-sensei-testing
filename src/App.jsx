@@ -271,6 +271,11 @@ function App() {
   const handleConnect = async () => {
     if (!agentId) return alert("Please enter an Agent ID first");
     if (!currentSessionId) return alert("Session not initialized. Please wait or create a new session.");
+    
+    const storedSessionId = localStorage.getItem('artsensei_session_id');
+    if (!storedSessionId) {
+      return alert("No active session found in storage. Please create a new session first.");
+    }
 
     setConnectionStatus("connecting");
     try {
@@ -761,7 +766,7 @@ function App() {
               </button>
             )}
             {connectionStatus !== 'connected' ? (
-              <button onClick={handleConnect} disabled={connectionStatus === 'connecting' || !currentSessionId || isInitializingSession} className="btn-primary" style={{ whiteSpace: 'nowrap' }}>
+              <button onClick={handleConnect} disabled={connectionStatus === 'connecting' || !currentSessionId || isInitializingSession || isCreatingSession} className="btn-primary" style={{ whiteSpace: 'nowrap' }}>
                 {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
               </button>
             ) : (
