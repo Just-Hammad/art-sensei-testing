@@ -44,6 +44,9 @@ function App() {
   const [selectedKBMap, setSelectedKBMap] = useState({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  
+  const [loadedSystemPrompt, setLoadedSystemPrompt] = useState("");
+  const [loadedKBMap, setLoadedKBMap] = useState({});
 
   const [editingKB, setEditingKB] = useState(null);
   const [kbContent, setKbContent] = useState("");
@@ -415,28 +418,29 @@ function App() {
   // --- ADMIN & KB ACTIONS ---
 
   const loadConfig = async () => {
-    if (!apiKey || !agentId) return alert("API Key and Agent ID required");
+    if (!apiKey || !agentId) return;
     setIsLoadingConfig(true);
     try {
       console.log(`[DEBUG] Loading Config for Agent: ${agentId}`);
       console.log(`[DEBUG] Using API Key: ${apiKey ? apiKey.substring(0, 5) + "..." : "MISSING"}`);
-      // 1. Fetch Agent Details
       const agentResp = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
         headers: { 'xi-api-key': apiKey }
       });
       const config = agentResp.data.conversation_config?.agent;
-      setSystemPrompt(config?.prompt?.prompt || "");
+      const loadedPrompt = config?.prompt?.prompt || "";
+      setSystemPrompt(loadedPrompt);
+      setLoadedSystemPrompt(loadedPrompt);
 
       const currentKBs = config?.knowledge_base || [];
       const currentKBMap = {};
       currentKBs.forEach(kb => { currentKBMap[kb.id] = kb; });
       setSelectedKBMap(currentKBMap);
+      setLoadedKBMap(currentKBMap);
 
-      // 2. Fetch KBs
       await refreshKBList();
 
     } catch (err) {
-      alert(`Failed to load config: ${err.message}`);
+      console.error(`Failed to load config: ${err.message}`);
     } finally {
       setIsLoadingConfig(false);
     }
@@ -481,6 +485,8 @@ function App() {
       }, {
         headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }
       });
+      setLoadedSystemPrompt(systemPrompt);
+      setLoadedKBMap(selectedKBMap);
       alert("Agent Configuration Saved!");
     } catch (err) {
       alert(`Save Failed: ${err.message}`);
@@ -575,6 +581,11 @@ function App() {
     setConfigAgentName("");
 
     if (!agentId || !apiKey) {
+      setSystemPrompt("");
+      setLoadedSystemPrompt("");
+      setSelectedKBMap({});
+      setLoadedKBMap({});
+      setAvailableKBs([]);
       return;
     }
 
@@ -587,6 +598,8 @@ function App() {
         const agentData = response.data;
         const fetchedName = agentData.name || "";
         setConfigAgentName(fetchedName);
+        
+        await loadConfig();
       } catch (error) {
         console.error('Failed to fetch agent name:', error);
         setConfigAgentName("");
@@ -836,7 +849,17 @@ function App() {
                 <button onClick={loadConfig} disabled={isLoadingConfig} className="btn-icon">
                   <RefreshCw size={18} className={isLoadingConfig ? "spin" : ""} />
                 </button>
-                <button onClick={saveConfig} disabled={!systemPrompt.trim() || isSavingConfig || !apiKey || !agentId} className="btn-primary">
+                <button 
+                  onClick={saveConfig} 
+                  disabled={
+                    !systemPrompt.trim() || 
+                    isSavingConfig || 
+                    !apiKey || 
+                    !agentId || 
+                    (systemPrompt === loadedSystemPrompt && JSON.stringify(selectedKBMap) === JSON.stringify(loadedKBMap))
+                  } 
+                  className="btn-primary"
+                >
                   <Save size={16} /> {isSavingConfig ? 'UPDATING...' : 'UPDATE AGENT SETTINGS'}
                 </button>
               </div>
