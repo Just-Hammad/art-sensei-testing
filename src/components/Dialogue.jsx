@@ -4,7 +4,7 @@ import './Dialogue.css';
 
 const EXAMPLE_TEXT = `---
 
-## 8. Contextual Knowledge Integration (INTERNAL ONLY)
+## Contextual Knowledge Integration (INTERNAL ONLY)
 
 ### Session Awareness
 Short-term, active information such as:
