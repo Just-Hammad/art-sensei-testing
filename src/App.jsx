@@ -5,13 +5,14 @@ import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSqu
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import Dialogue from './components/Dialogue';
-import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache } from './services/memoryService';
+import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteSessionMemories, deleteMemoryById } from './services/memoryService';
 import { TEST_USER_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
+import { API_CONFIG } from './utils/route';
 import { createNewSession, saveSessionToStorage, initializeSession } from './services/sessionManager';
 
 // Default Config
-const DEFAULT_BACKEND = "https://mvp-backend-production-4c8b.up.railway.app";
+const DEFAULT_BACKEND = API_CONFIG.BASE_URL;
 // NOTE: For Admin updates, we go direct to ElevenLabs API to avoid needing backend endpoints for it
 
 
@@ -45,7 +46,7 @@ function App() {
   const [selectedKBMap, setSelectedKBMap] = useState({});
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  
+
   const [loadedSystemPrompt, setLoadedSystemPrompt] = useState("");
   const [loadedKBMap, setLoadedKBMap] = useState({});
 
@@ -116,7 +117,7 @@ function App() {
     formData.append('conversation_id', currentSessionId);
     formData.append('user_id', TEST_USER_ID);
 
-    const response = await axios.post(`${backendUrl}/api/v1/images/upload`, formData, {
+    const response = await axios.post(`${backendUrl}${API_CONFIG.ENDPOINTS.IMAGES.UPLOAD}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
@@ -211,22 +212,42 @@ function App() {
         fetchGlobalMemories(TEST_USER_ID)
       ]);
 
-      // Always update memories (background updates won't show loading)
       setSessionMemories(sessionData.memories || []);
       setGlobalMemories(globalData.memories || []);
 
-      // Mark as loaded after first successful fetch
       if (!hasLoadedMemoriesOnce) {
         setHasLoadedMemoriesOnce(true);
       }
     } catch (error) {
       console.error('Failed to load memories:', error);
-      // Don't clear existing memories on error
     } finally {
-      // Only clear loading state on first fetch
       if (!hasLoadedMemoriesOnce) {
         setIsLoadingMemories(false);
       }
+    }
+  };
+
+  const handleDeleteMemory = async (memoryId, memoryType) => {
+    try {
+      console.log('[APP] Deleting memory:', memoryId, 'Type:', memoryType);
+
+      const result = await deleteMemoryById(memoryId);
+      console.log('[APP] Delete memory response:', result);
+
+      if (result.success) {
+        if (memoryType === 'session') {
+          setSessionMemories(prev => prev.filter(m => m.id !== memoryId));
+        } else if (memoryType === 'global') {
+          setGlobalMemories(prev => prev.filter(m => m.id !== memoryId));
+        }
+
+        await loadMemories();
+      }
+
+      return result;
+    } catch (error) {
+      console.error('[APP] Failed to delete memory:', error);
+      throw error;
     }
   };
 
@@ -234,7 +255,7 @@ function App() {
   const fetchAgentName = async () => {
     try {
       console.log(`[Agent Info] Fetching agent details for agent ID: ${agentId}`);
-      const response = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+      const response = await axios.get(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.AGENTS}/${agentId}`, {
         headers: { 'xi-api-key': apiKey }
       });
 
@@ -271,7 +292,7 @@ function App() {
   const handleConnect = async () => {
     if (!agentId) return alert("Please enter an Agent ID first");
     if (!currentSessionId) return alert("Session not initialized. Please wait or create a new session.");
-    
+
     const storedSessionId = localStorage.getItem('artsensei_session_id');
     if (!storedSessionId) {
       return alert("No active session found in storage. Please create a new session first.");
@@ -306,7 +327,7 @@ function App() {
 
       // Get signed URL
       console.log(`[Connect] Fetching signed URL from backend...`);
-      const resp = await axios.get(`${backendUrl}/api/v1/elevenlabs/get-signed-url?text_mode=true`, {
+      const resp = await axios.get(`${backendUrl}${API_CONFIG.ENDPOINTS.ELEVENLABS.SIGNED_URL}?text_mode=true`, {
         headers: {
           'xi-api-key': apiKey,
           'xi-agent-id': agentId
@@ -317,6 +338,9 @@ function App() {
 
       // Start the conversation session
       console.log(`[Connect] Starting conversation session...`);
+
+      console.log("[CONNECTIONS] sessionContext=> ", sessionContext)
+      console.log("[CONNECTIONS] globalContext=> ", globalContext)
       await conversation.startSession({
         signedUrl: url,
         connectionType: "websocket",
@@ -346,7 +370,7 @@ function App() {
             }
 
             try {
-              const response = await axios.post(`${backendUrl}/api/v1/vision/point`, {
+              const response = await axios.post(`${backendUrl}${API_CONFIG.ENDPOINTS.VISION.POINT}`, {
                 filename: activeImage.title,
                 object: query,
                 max_points: 1
@@ -437,7 +461,7 @@ function App() {
     try {
       console.log(`[DEBUG] Loading Config for Agent: ${agentId}`);
       console.log(`[DEBUG] Using API Key: ${apiKey ? apiKey.substring(0, 5) + "..." : "MISSING"}`);
-      const agentResp = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+      const agentResp = await axios.get(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.AGENTS}/${agentId}`, {
         headers: { 'xi-api-key': apiKey }
       });
       const config = agentResp.data.conversation_config?.agent;
@@ -461,7 +485,7 @@ function App() {
   };
 
   const refreshKBList = async () => {
-    const kbResp = await axios.get(`https://api.elevenlabs.io/v1/convai/knowledge-base?page_size=100`, {
+    const kbResp = await axios.get(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.KNOWLEDGE_BASE}?page_size=100`, {
       headers: { 'xi-api-key': apiKey }
     });
     setAvailableKBs(kbResp.data.documents || []);
@@ -487,7 +511,7 @@ function App() {
         type: kb.type
       }));
 
-      await axios.patch(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+      await axios.patch(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.AGENTS}/${agentId}`, {
         conversation_config: {
           agent: {
             prompt: {
@@ -524,7 +548,7 @@ function App() {
     setEditingKB(kb);
     setKbContent("Loading content...");
     try {
-      const resp = await axios.get(`https://api.elevenlabs.io/v1/convai/knowledge-base/${kb.id}`, {
+      const resp = await axios.get(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.KNOWLEDGE_BASE}/${kb.id}`, {
         headers: { 'xi-api-key': apiKey }
       });
       const data = resp.data;
@@ -538,7 +562,7 @@ function App() {
 
   const handleRenameKB = async (id, newName) => {
     try {
-      await axios.patch(`https://api.elevenlabs.io/v1/convai/knowledge-base/${id}`, {
+      await axios.patch(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.KNOWLEDGE_BASE}/${id}`, {
         name: newName
       }, {
         headers: { 'xi-api-key': apiKey }
@@ -559,7 +583,7 @@ function App() {
   const handleDeleteKB = async (id) => {
     if (!confirm("Are you sure you want to delete this Knowledge Base document? This cannot be undone.")) return;
     try {
-      await axios.delete(`https://api.elevenlabs.io/v1/convai/knowledge-base/${id}`, {
+      await axios.delete(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.KNOWLEDGE_BASE}/${id}`, {
         headers: { 'xi-api-key': apiKey }
       });
       setSelectedKBMap(prev => {
@@ -629,13 +653,13 @@ function App() {
     const debounceTimer = setTimeout(async () => {
       setIsFetchingAgentName(true);
       try {
-        const response = await axios.get(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+        const response = await axios.get(`${API_CONFIG.ELEVENLABS_BASE_URL}${API_CONFIG.ENDPOINTS.ELEVENLABS.AGENTS}/${agentId}`, {
           headers: { 'xi-api-key': apiKey }
         });
         const agentData = response.data;
         const fetchedName = agentData.name || "";
         setConfigAgentName(fetchedName);
-        
+
         await loadConfig();
       } catch (error) {
         console.error('Failed to fetch agent name:', error);
@@ -748,8 +772,8 @@ function App() {
           </h2>
           <div className="actions" style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
             {connectionStatus !== 'connected' && (
-              <button 
-                onClick={handleCreateNewSession} 
+              <button
+                onClick={handleCreateNewSession}
                 disabled={isCreatingSession || isInitializingSession}
                 className="btn-secondary"
                 title="Create New Session"
@@ -926,15 +950,15 @@ function App() {
                 <button onClick={loadConfig} disabled={isLoadingConfig} className="btn-icon">
                   <RefreshCw size={18} className={isLoadingConfig ? "spin" : ""} />
                 </button>
-                <button 
-                  onClick={saveConfig} 
+                <button
+                  onClick={saveConfig}
                   disabled={
-                    !systemPrompt.trim() || 
-                    isSavingConfig || 
-                    !apiKey || 
-                    !agentId || 
+                    !systemPrompt.trim() ||
+                    isSavingConfig ||
+                    !apiKey ||
+                    !agentId ||
                     (systemPrompt === loadedSystemPrompt && JSON.stringify(selectedKBMap) === JSON.stringify(loadedKBMap))
-                  } 
+                  }
                   className="btn-primary"
                 >
                   <Save size={16} /> {isSavingConfig ? 'UPDATING...' : 'UPDATE AGENT SETTINGS'}
@@ -959,6 +983,7 @@ function App() {
               isLoading={isLoadingMemories}
               sessionId={currentSessionId}
               userId={TEST_USER_ID}
+              onDeleteMemory={handleDeleteMemory}
             />
           </>
         ) : (

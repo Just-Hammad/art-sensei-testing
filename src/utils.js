@@ -1,6 +1,6 @@
 export const formatSessionContext = (sessionMemories) => {
   const memories = Array.isArray(sessionMemories) ? sessionMemories : (sessionMemories?.memories || []);
-  
+
   if (!memories || memories.length === 0) {
     return "No prior session history.";
   }
@@ -12,12 +12,14 @@ export const formatSessionContext = (sessionMemories) => {
     })
     .join("\n");
 
-  return `Current session insights:\n${formattedMemories}`;
+  console.log("[FORMATTER] session=>", formattedMemories)
+
+  return `\n${formattedMemories}`;
 };
 
 export const formatGlobalContext = (globalMemories) => {
   const memories = Array.isArray(globalMemories) ? globalMemories : (globalMemories?.memories || []);
-  
+
   if (!memories || memories.length === 0) {
     return "No long-term user knowledge available.";
   }
@@ -29,5 +31,7 @@ export const formatGlobalContext = (globalMemories) => {
     })
     .join("\n");
 
-  return `User profile and preferences:\n${formattedMemories}`;
+  console.log("[FORMATTER] global=>", formattedMemories)
+
+  return `\n${formattedMemories}`;
 };
