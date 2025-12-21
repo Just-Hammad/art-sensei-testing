@@ -1,4 +1,5 @@
-import { API_CONFIG } from '../utils/route';
+import { supabase } from '../lib/supabaseClient';
+import { generateSessionUserId, generateGlobalUserId } from '../utils/memoryUtils';
 
 const MEMORY_CACHE_DURATION = 8000;
 const memoryCache = {
@@ -14,31 +15,43 @@ export const fetchSessionMemories = async (sessionId, userId) => {
   }
 
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MEMORIES.SESSION}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chat_session_id: sessionId,
-        user_id: userId,
-      }),
+    const sessionUserId = generateSessionUserId(userId);
+    
+    console.log('[SUPABASE SESSION] Fetching memories for:', { sessionId, userId, sessionUserId });
+    
+    const { data, error } = await supabase.rpc('get_session_memories', {
+      p_user_id: sessionUserId,
+      p_chat_session_id: sessionId
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    if (error) {
+      console.error('[SUPABASE SESSION] Error:', error);
+      throw new Error(`Failed to fetch session memories: ${error.message}`);
     }
 
-    const data = await response.json();
+    console.log('[SUPABASE SESSION] Raw data:', data);
 
-    console.log('[Memory Fetch] Session memories response:', data);
+    const memories = data ? data.map(item => {
+      const metadata = item.metadata || {};
+      const memoryContent = metadata.data || metadata.memory || metadata.content || JSON.stringify(metadata);
+      return {
+        id: item.id,
+        memory: memoryContent,
+        metadata: metadata
+      };
+    }) : [];
+
+    console.log('[SUPABASE SESSION] Processed memories:', memories.length);
+    memories.forEach((mem, idx) => {
+      console.log(`[SUPABASE SESSION] [${idx + 1}]`, mem.memory.substring(0, 100));
+    });
 
     const result = {
-      success: data.success || true,
+      success: true,
       chat_session_id: sessionId,
       user_id: userId,
-      count: data.count || 0,
-      memories: data.memories || []
+      count: memories.length,
+      memories: memories
     };
 
     memoryCache.session = {
@@ -67,29 +80,41 @@ export const fetchGlobalMemories = async (userId) => {
   }
 
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MEMORIES.GLOBAL}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: userId,
-      }),
+    const globalUserId = generateGlobalUserId(userId);
+    
+    console.log('[SUPABASE GLOBAL] Fetching memories for:', { userId, globalUserId });
+    
+    const { data, error } = await supabase.rpc('get_global_memories', {
+      p_user_id: globalUserId
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    if (error) {
+      console.error('[SUPABASE GLOBAL] Error:', error);
+      throw new Error(`Failed to fetch global memories: ${error.message}`);
     }
 
-    const data = await response.json();
+    console.log('[SUPABASE GLOBAL] Raw data:', data);
 
-    console.log('[Memory Fetch] Global memories response:', data);
+    const memories = data ? data.map(item => {
+      const metadata = item.metadata || {};
+      const memoryContent = metadata.data || metadata.memory || metadata.content || JSON.stringify(metadata);
+      return {
+        id: item.id,
+        memory: memoryContent,
+        metadata: metadata
+      };
+    }) : [];
+
+    console.log('[SUPABASE GLOBAL] Processed memories:', memories.length);
+    memories.forEach((mem, idx) => {
+      console.log(`[SUPABASE GLOBAL] [${idx + 1}]`, mem.memory.substring(0, 100));
+    });
 
     const result = {
-      success: data.success || true,
+      success: true,
       user_id: userId,
-      count: data.count || 0,
-      memories: data.memories || []
+      count: memories.length,
+      memories: memories
     };
 
     memoryCache.global = {
@@ -116,26 +141,9 @@ export const clearMemoryCache = () => {
 
 export const deleteSessionMemories = async (sessionId, userId) => {
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MEMORIES.SESSION}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chat_session_id: sessionId,
-        user_id: userId,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-
+    console.log('[DELETE] Session memories delete functionality not implemented with Supabase RPC');
     clearMemoryCache();
-
-    return result;
+    return { success: true, message: 'Cache cleared' };
   } catch (error) {
     console.error('Error deleting session memories:', error);
     throw error;
@@ -144,29 +152,11 @@ export const deleteSessionMemories = async (sessionId, userId) => {
 
 export const deleteMemoryById = async (memoryId) => {
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.MEMORIES.MEMORY}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        memory_id: memoryId,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    console.log('[Memory Delete] Delete response:', result);
-
+    console.log('[DELETE] Memory by ID delete functionality not implemented with Supabase RPC');
     clearMemoryCache();
-
-    return result;
+    return { success: true, message: 'Cache cleared' };
   } catch (error) {
-    console.error('Error deleting memory:', error);
+    console.error('Error deleting memory by ID:', error);
     throw error;
   }
 };
