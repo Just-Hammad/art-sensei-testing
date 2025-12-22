@@ -1,6 +1,6 @@
 import { API_CONFIG } from '../utils/route';
 
-export async function fetchFirstMessage(userId, globalMemories = null) {
+export async function fetchFirstMessage(userId, user_name, globalMemories = null) {
   try {
     const response = await fetch(`${API_CONFIG.BASE_URL}/api/v1/greeting/first-message`, {
       method: "POST",
@@ -9,7 +9,7 @@ export async function fetchFirstMessage(userId, globalMemories = null) {
       },
       body: JSON.stringify({
         user_id: userId,
-        user_name: "Testing",
+        user_name: user_name,
         global_memories: globalMemories,
       }),
     });
