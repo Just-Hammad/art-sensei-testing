@@ -515,9 +515,9 @@ function App() {
         conversation_config: {
           agent: {
             prompt: {
-              prompt: systemPrompt
-            },
-            knowledge_base: kbList
+              prompt: systemPrompt,
+              knowledge_base: kbList
+            }
           }
         }
       }, {
