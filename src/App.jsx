@@ -6,6 +6,7 @@ import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import Dialogue from './components/Dialogue';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteSessionMemories, deleteMemoryById } from './services/memoryService';
+import { fetchFirstMessage } from './services/greetingService';
 import { TEST_USER_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
 import { API_CONFIG } from './utils/route';
@@ -64,6 +65,8 @@ function App() {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [isInitializingSession, setIsInitializingSession] = useState(true);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [dynamicFirstMessage, setDynamicFirstMessage] = useState(null);
+  const [isFetchingFirstMessage, setIsFetchingFirstMessage] = useState(false);
 
   // Image Upload State
   const [uploadedImages, setUploadedImages] = useState([]);
@@ -325,6 +328,21 @@ function App() {
         console.error(`[Connect] Failed to fetch memories:`, memErr);
       }
 
+      console.log(`[Connect] Fetching dynamic first message...`);
+      setIsFetchingFirstMessage(true);
+      let firstMessage = null;
+      try {
+        firstMessage = await fetchFirstMessage(TEST_USER_ID, "there", globalContext);
+        if (firstMessage) {
+          setDynamicFirstMessage(firstMessage);
+          console.log(`[Connect] Dynamic first message:`, firstMessage);
+        }
+      } catch (fmErr) {
+        console.error(`[Connect] Failed to fetch first message:`, fmErr);
+      } finally {
+        setIsFetchingFirstMessage(false);
+      }
+
       // Get signed URL
       console.log(`[Connect] Fetching signed URL from backend...`);
       const resp = await axios.get(`${backendUrl}${API_CONFIG.ENDPOINTS.ELEVENLABS.SIGNED_URL}?text_mode=true`, {
@@ -341,7 +359,8 @@ function App() {
 
       console.log("[CONNECTIONS] sessionContext=> ", sessionContext)
       console.log("[CONNECTIONS] globalContext=> ", globalContext)
-      await conversation.startSession({
+      
+      const sessionOptions = {
         signedUrl: url,
         connectionType: "websocket",
         customLlmExtraBody: {
@@ -394,7 +413,17 @@ function App() {
             }
           }
         }
-      });
+      };
+
+      if (firstMessage) {
+        sessionOptions.overrides = {
+          agent: {
+            firstMessage: firstMessage,
+          },
+        };
+      }
+
+      await conversation.startSession(sessionOptions);
 
       console.log(`[Connect] Session started successfully with agent: ${fetchedAgentName}`);
 
