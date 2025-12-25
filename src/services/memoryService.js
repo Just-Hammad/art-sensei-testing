@@ -16,9 +16,9 @@ export const fetchSessionMemories = async (sessionId, userId) => {
 
   try {
     const sessionUserId = generateSessionUserId(userId);
-    
+
     console.log('[SUPABASE SESSION] Fetching memories for:', { sessionId, userId, sessionUserId });
-    
+
     const { data, error } = await supabase.rpc('get_session_memories', {
       p_user_id: sessionUserId,
       p_chat_session_id: sessionId
@@ -81,9 +81,9 @@ export const fetchGlobalMemories = async (userId) => {
 
   try {
     const globalUserId = generateGlobalUserId(userId);
-    
+
     console.log('[SUPABASE GLOBAL] Fetching memories for:', { userId, globalUserId });
-    
+
     const { data, error } = await supabase.rpc('get_global_memories', {
       p_user_id: globalUserId
     });
@@ -152,11 +152,29 @@ export const deleteSessionMemories = async (sessionId, userId) => {
 
 export const deleteMemoryById = async (memoryId) => {
   try {
-    console.log('[DELETE] Memory by ID delete functionality not implemented with Supabase RPC');
+    console.log('[DELETE] Deleting memory by ID:', memoryId);
+
+    const { data, error } = await supabase.rpc('delete_memory_by_id', {
+      p_memory_id: memoryId
+    });
+
+    if (error) {
+      console.error('[DELETE] Supabase RPC error:', error);
+      throw new Error(`Failed to delete memory: ${error.message}`);
+    }
+
+    console.log('[DELETE] Delete result (rows affected):', data);
+
+    // Clear cache after successful deletion
     clearMemoryCache();
-    return { success: true, message: 'Cache cleared' };
+
+    return {
+      success: true,
+      deletedCount: data,
+      message: data > 0 ? 'Memory deleted successfully' : 'Memory not found'
+    };
   } catch (error) {
-    console.error('Error deleting memory by ID:', error);
+    console.error('[DELETE] Error deleting memory by ID:', error);
     throw error;
   }
 };
