@@ -2,7 +2,7 @@ export const formatSessionContext = (sessionMemories) => {
   const memories = Array.isArray(sessionMemories) ? sessionMemories : (sessionMemories?.memories || []);
 
   if (!memories || memories.length === 0) {
-    return "No prior session history.";
+    return "No session memories available for this user.";
   }
 
   const formattedMemories = memories
@@ -21,7 +21,7 @@ export const formatGlobalContext = (globalMemories) => {
   const memories = Array.isArray(globalMemories) ? globalMemories : (globalMemories?.memories || []);
 
   if (!memories || memories.length === 0) {
-    return "No long-term user knowledge available.";
+    return "No global memories available for this user.";
   }
 
   const formattedMemories = memories

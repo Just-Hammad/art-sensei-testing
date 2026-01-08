@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useConversation } from '@elevenlabs/react';
-import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2, RotateCcw } from 'lucide-react';
+import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
-import Dialogue from './components/Dialogue';
-import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteSessionMemories, deleteMemoryById } from './services/memoryService';
+import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteMemoryById } from './services/memoryService';
 import { fetchFirstMessage } from './services/greetingService';
 import { TEST_USER_ID, agents } from './constants';
 import { formatSessionContext, formatGlobalContext } from './utils';
@@ -41,7 +40,6 @@ function App() {
 
   // Admin State
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [showDialogue, setShowDialogue] = useState(false);
 
   const [availableKBs, setAvailableKBs] = useState([]);
   const [selectedKBMap, setSelectedKBMap] = useState({});
@@ -359,18 +357,18 @@ function App() {
 
       console.log("[CONNECTIONS] sessionContext=> ", sessionContext)
       console.log("[CONNECTIONS] globalContext=> ", globalContext)
-      
+
       const sessionOptions = {
         signedUrl: url,
         connectionType: "websocket",
         customLlmExtraBody: {
           chatId: currentSessionId,
           userId: TEST_USER_ID,
+          globalMemories: globalContext || "No global memories available for this user.",
+          sessionMemories: sessionContext || "No session memories available for this user.",
         },
         dynamicVariables: {
           first_name: "there",
-          session_context: sessionContext,
-          global_context: globalContext,
         },
         clientTools: {
           showImageOnScreen: async ({ imagePath }) => {
@@ -520,17 +518,8 @@ function App() {
     setAvailableKBs(kbResp.data.documents || []);
   };
 
-  const hasRequiredVariables = (prompt) => {
-    return prompt.includes('{{session_context}}') && prompt.includes('{{global_context}}');
-  };
-
   const saveConfig = async () => {
     if (!apiKey || !agentId) return;
-
-    if (!hasRequiredVariables(systemPrompt)) {
-      setShowDialogue(true);
-      return;
-    }
 
     setIsSavingConfig(true);
     try {
@@ -627,10 +616,7 @@ function App() {
     }
   };
 
-  const handleAppendExample = (exampleText) => {
-    setSystemPrompt(prev => prev + "\n\n" + exampleText);
-    setShowDialogue(false);
-  };
+
 
   const handleCreateNewSession = async () => {
     if (connectionStatus === 'connected') {
@@ -1180,12 +1166,7 @@ function App() {
 
       </div>
 
-      {showDialogue && (
-        <Dialogue
-          onClose={() => setShowDialogue(false)}
-          onAppend={handleAppendExample}
-        />
-      )}
+
     </div >
   )
 }
