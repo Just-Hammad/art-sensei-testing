@@ -1,4 +1,4 @@
-export const TEST_USER_ID = '6a0cc82e-c127-46cf-bc4d-e1692453f36b'; // artsenseitesting@example.com
+export const TEST_USER_ID = '1463159e-72fa-4b9e-a316-3750dd238a3a'; // artsenseitesting@example.com
 // export const TEST_SESSION_ID = '8d3639ca-65d4-4664-ab97-27178650cbf2'; // artsensei-testing
 // export const TEST_USER_ID = `2afd8ab9-302a-4d2f-a272-7f50b344b358` // test@example.com
 

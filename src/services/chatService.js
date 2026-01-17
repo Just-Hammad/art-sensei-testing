@@ -78,7 +78,7 @@ export async function getRawChatMessages(sessionId) {
 
         const { data: messages, error } = await supabase
             .from("chat_messages")
-            .select("role, content, example_image, created_at")
+            .select("role, content, example_image, attachments, created_at")
             .eq("chat_session_id", sessionId)
             .order("created_at", { ascending: true });
 
@@ -93,6 +93,10 @@ export async function getRawChatMessages(sessionId) {
                 role: msg.role,
                 content: msg.content || "",
                 exampleImage: msg.example_image || null,
+                attachments: (msg.attachments || []).map(url => ({
+                    serverUrl: url,
+                    localUrl: url
+                })),
                 timestamp: new Date(msg.created_at)
             }));
 
