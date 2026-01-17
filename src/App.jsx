@@ -5,11 +5,13 @@ import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSqu
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
 import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteMemoryById } from './services/memoryService';
+import { getChatMessagesBySessionId, getRawChatMessages } from './services/chatService';
+import { addMessageToSupabase } from './services/messageService';
 import { fetchFirstMessage } from './services/greetingService';
 import { TEST_USER_ID, agents } from './constants';
-import { formatSessionContext, formatGlobalContext } from './utils';
+import { formatGlobalContext } from './utils';
 import { API_CONFIG } from './utils/route';
-import { createNewSession, saveSessionToStorage, initializeSession } from './services/sessionManager';
+import { createNewSession, saveSessionToStorage, getSessionFromStorage } from './services/sessionManager';
 
 // Default Config
 const DEFAULT_BACKEND = API_CONFIG.BASE_URL;
@@ -100,8 +102,26 @@ function App() {
   });
 
   // --- HELPERS ---
-  const addMessage = (role, content, attachments = []) => {
+  const addMessage = async (role, content, attachments = []) => {
+    // Add to local state immediately
     setMessages(prev => [...prev, { role, content, attachments, timestamp: new Date() }]);
+
+    // Save to Supabase (fire and forget)
+    if (currentSessionId && role !== 'system') {
+      addMessageToSupabase(currentSessionId, {
+        role,
+        content,
+        attachments,
+      }).then(result => {
+        if (result.success) {
+          console.log(`[App] Message saved to Supabase:`, result.message?.id);
+        } else {
+          console.error(`[App] Failed to save message to Supabase:`, result.error);
+        }
+      }).catch(err => {
+        console.error(`[App] Error saving message to Supabase:`, err);
+      });
+    }
   };
 
   const addSystemMessage = (text) => {
@@ -303,60 +323,75 @@ function App() {
     try {
       console.log(`[Connect] Starting connection process for agent: ${agentId}`);
 
-      // Fetch agent name first
-      const fetchedAgentName = await fetchAgentName();
+      // Parallel fetch: agent name, signed URL, global memories, chat messages
+      setIsFetchingFirstMessage(true);
+      console.log(`[Connect] Starting paraltch for connection data...`);
+
+      console.log(`[Connect] Fetching data for session: ${currentSessionId}`);
+
+      const [
+        fetchedAgentName,
+        signedUrlResp,
+        globalData,
+        chatMessagesResult
+      ] = await Promise.all([
+        fetchAgentName(),
+        axios.get(`${backendUrl}${API_CONFIG.ENDPOINTS.ELEVENLABS.SIGNED_URL}?text_mode=true`, {
+          headers: {
+            'xi-api-key': apiKey,
+            'xi-agent-id': agentId
+          }
+        }),
+        fetchGlobalMemories(TEST_USER_ID).catch(err => {
+          console.error(`[Connect] Failed to fetch global memories:`, err);
+          return { memories: [] };
+        }),
+        getChatMessagesBySessionId(currentSessionId).catch(err => {
+          console.error(`[Connect] Failed to fetch chat messages:`, err);
+          return { data: [] };
+        })
+      ]);
+
+      // loggin the chat emssages
+      console.info(`[Connect] Chat messages:`, chatMessagesResult);
       console.log(`[Connect] Agent name retrieved: ${fetchedAgentName}`);
 
-      console.log(`[Connect] Fetching memories before starting session...`);
-      let sessionContext = "No prior session history.";
-      let globalContext = "No long-term user knowledge available.";
-
-      try {
-        const sessionData = await fetchSessionMemories(currentSessionId, TEST_USER_ID);
-        const globalData = await fetchGlobalMemories(TEST_USER_ID);
-
-        sessionContext = formatSessionContext(sessionData);
-        globalContext = formatGlobalContext(globalData);
-
-        console.log(`[Connect] Memories loaded:`, {
-          sessionCount: sessionData?.memories?.length || 0,
-          globalCount: globalData?.memories?.length || 0
-        });
-      } catch (memErr) {
-        console.error(`[Connect] Failed to fetch memories:`, memErr);
-      }
-
-      console.log(`[Connect] Fetching dynamic first message...`);
-      setIsFetchingFirstMessage(true);
-      let firstMessage = null;
-      try {
-        firstMessage = await fetchFirstMessage(TEST_USER_ID, "there", globalContext);
-        if (firstMessage) {
-          setDynamicFirstMessage(firstMessage);
-          console.log(`[Connect] Dynamic first message:`, firstMessage);
-        }
-      } catch (fmErr) {
-        console.error(`[Connect] Failed to fetch first message:`, fmErr);
-      } finally {
-        setIsFetchingFirstMessage(false);
-      }
-
-      // Get signed URL
-      console.log(`[Connect] Fetching signed URL from backend...`);
-      const resp = await axios.get(`${backendUrl}${API_CONFIG.ENDPOINTS.ELEVENLABS.SIGNED_URL}?text_mode=true`, {
-        headers: {
-          'xi-api-key': apiKey,
-          'xi-agent-id': agentId
-        }
-      });
-      const { signedUrl: url } = resp.data;
+      const { signedUrl: url } = signedUrlResp.data;
       console.log(`[Connect] Signed URL obtained successfully`);
+
+      const globalContext = formatGlobalContext(globalData);
+      const chatMessages = chatMessagesResult.data || [];
+
+      console.log(`[Connect] Data loaded:`, {
+        globalCount: globalData?.memories?.length || 0,
+        chatMessagesCount: chatMessages.length
+      });
+
+      // Fetch dynamic first message only if session has 0 messages
+      let firstMessage = null;
+      if (chatMessages.length === 0) {
+        console.log(`[Connect] No existing messages - fetching first message...`);
+        try {
+          firstMessage = await fetchFirstMessage(TEST_USER_ID, "there", globalContext);
+          if (firstMessage) {
+            setDynamicFirstMessage(firstMessage);
+            console.log(`[Connect] Dynamic first message:`, firstMessage);
+          }
+        } catch (fmErr) {
+          console.error(`[Connect] Failed to fetch first message:`, fmErr);
+        }
+      } else {
+        console.log(`[Connect] Skipping first message - session has ${chatMessages.length} existing messages`);
+        setDynamicFirstMessage(null);
+        firstMessage = null;
+      }
+      setIsFetchingFirstMessage(false);
 
       // Start the conversation session
       console.log(`[Connect] Starting conversation session...`);
 
-      console.log("[CONNECTIONS] sessionContext=> ", sessionContext)
-      console.log("[CONNECTIONS] globalContext=> ", globalContext)
+      console.log("[CONNECTIONS] globalContext=> ", globalContext);
+      console.log("[CONNECTIONS] chatMessages=> ", chatMessages);
 
       const sessionOptions = {
         signedUrl: url,
@@ -365,7 +400,8 @@ function App() {
           chatId: currentSessionId,
           userId: TEST_USER_ID,
           globalMemories: globalContext || "No global memories available for this user.",
-          sessionMemories: sessionContext || "No session memories available for this user.",
+          chatMessages: chatMessages,
+          testing: true,
         },
         dynamicVariables: {
           first_name: "there",
@@ -413,13 +449,12 @@ function App() {
         }
       };
 
-      if (firstMessage) {
-        sessionOptions.overrides = {
-          agent: {
-            firstMessage: firstMessage,
-          },
-        };
-      }
+      // Always set overrides - use empty string to suppress default greeting when resuming
+      sessionOptions.overrides = {
+        agent: {
+          firstMessage: firstMessage || "",
+        },
+      };
 
       await conversation.startSession(sessionOptions);
 
@@ -628,10 +663,11 @@ function App() {
       const result = await createNewSession(TEST_USER_ID);
       saveSessionToStorage(result.sessionId);
       setCurrentSessionId(result.sessionId);
+      setMessages([]);
       setSessionMemories([]);
       setGlobalMemories([]);
       setHasLoadedMemoriesOnce(false);
-      alert('New session created successfully!');
+      setDynamicFirstMessage(null);
       console.log('[New Session] Created:', result.sessionId);
     } catch (error) {
       console.error('[New Session] Failed to create:', error);
@@ -691,12 +727,22 @@ function App() {
     const initSession = async () => {
       setIsInitializingSession(true);
       try {
-        const sessionId = await initializeSession(TEST_USER_ID);
-        setCurrentSessionId(sessionId);
-        console.log('[App] Session initialized:', sessionId);
+        const existingSessionId = getSessionFromStorage();
+
+        if (existingSessionId) {
+          console.log('[App] Found existing session:', existingSessionId);
+          setCurrentSessionId(existingSessionId);
+
+          const messagesResult = await getRawChatMessages(existingSessionId);
+          if (messagesResult.data && messagesResult.data.length > 0) {
+            setMessages(messagesResult.data);
+            console.log('[App] Loaded', messagesResult.data.length, 'messages from existing session');
+          }
+        } else {
+          console.log('[App] No existing session found');
+        }
       } catch (error) {
         console.error('[App] Failed to initialize session:', error);
-        alert('Failed to initialize session. Please refresh the page.');
       } finally {
         setIsInitializingSession(false);
       }
@@ -914,9 +960,9 @@ function App() {
                     minHeight: '20px',
                     padding: '0',
                     borderRadius: '50%',
-                    background: '#dc2626',
-                    color: 'white',
-                    border: 'none',
+                    background: '#ffffff',
+                    color: '#1a1a1a',
+                    border: '1px solid #9ca3af',
                     cursor: 'pointer',
                     fontSize: '14px',
                     fontWeight: 'bold',
@@ -1055,7 +1101,7 @@ function App() {
         {/* Credentials & Model */}
         <div className="card">
           <div className="form-group">
-            <label className="form-label">API Key</label>
+            <label className="form-label">Elevenlabs API Key</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
                 type={showApiKey ? "text" : "password"}
