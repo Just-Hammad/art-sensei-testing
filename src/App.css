@@ -379,6 +379,8 @@ html {
   padding: 6px 14px;
   border-radius: 20px;
   box-shadow: none;
+  white-space: nowrap;
+  max-width: fit-content;
 }
 
 .marcel-loading {

@@ -8,7 +8,8 @@ export const API_CONFIG = {
             MEMORY: "/api/v1/memories/memory"
         },
         IMAGES: {
-            UPLOAD: "/api/v1/images/upload"
+            UPLOAD: "/api/v1/images/upload",
+            REVALIDATE_CACHE: "/api/v1/images/revalidate-cache"
         },
         VISION: {
             POINT: "/api/v1/vision/point"
