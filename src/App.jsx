@@ -4,7 +4,7 @@ import { useConversation } from '@elevenlabs/react';
 import { Send, Image as ImageIcon, Settings, Save, RefreshCw, BookOpen, CheckSquare, Square, Edit2, Trash2, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import './App.css';
 import MemoryViewer from './components/MemoryViewer';
-import { fetchSessionMemories, fetchGlobalMemories, clearMemoryCache, deleteMemoryById } from './services/memoryService';
+import { fetchGlobalMemories, clearMemoryCache, deleteMemoryById } from './services/memoryService';
 import { getChatMessagesBySessionId, getRawChatMessages } from './services/chatService';
 import { addMessageToSupabase } from './services/messageService';
 import { fetchFirstMessage } from './services/greetingService';
@@ -56,8 +56,7 @@ function App() {
   const [isSavingKB, setIsSavingKB] = useState(false);
 
   const [memoryExpanded, setMemoryExpanded] = useState(false);
-  const [memoryTab, setMemoryTab] = useState('session');
-  const [sessionMemories, setSessionMemories] = useState([]);
+
   const [globalMemories, setGlobalMemories] = useState([]);
   const [isLoadingMemories, setIsLoadingMemories] = useState(false);
   const [hasLoadedMemoriesOnce, setHasLoadedMemoriesOnce] = useState(false);
@@ -228,12 +227,7 @@ function App() {
       setIsLoadingMemories(true);
     }
     try {
-      const [sessionData, globalData] = await Promise.all([
-        fetchSessionMemories(currentSessionId, TEST_USER_ID),
-        fetchGlobalMemories(TEST_USER_ID)
-      ]);
-
-      setSessionMemories(sessionData.memories || []);
+      const globalData = await fetchGlobalMemories(TEST_USER_ID);
       setGlobalMemories(globalData.memories || []);
 
       if (!hasLoadedMemoriesOnce) {
@@ -248,20 +242,15 @@ function App() {
     }
   };
 
-  const handleDeleteMemory = async (memoryId, memoryType) => {
+  const handleDeleteMemory = async (memoryId) => {
     try {
-      console.log('[APP] Deleting memory:', memoryId, 'Type:', memoryType);
+      console.log('[APP] Deleting memory:', memoryId);
 
       const result = await deleteMemoryById(memoryId);
       console.log('[APP] Delete memory response:', result);
 
       if (result.success) {
-        if (memoryType === 'session') {
-          setSessionMemories(prev => prev.filter(m => m.id !== memoryId));
-        } else if (memoryType === 'global') {
-          setGlobalMemories(prev => prev.filter(m => m.id !== memoryId));
-        }
-
+        setGlobalMemories(prev => prev.filter(m => m.id !== memoryId));
         await loadMemories();
       }
 
@@ -329,11 +318,17 @@ function App() {
 
       console.log(`[Connect] Fetching data for session: ${currentSessionId}`);
 
+      // Prepare FormData for cache revalidation
+      const cacheFormData = new FormData();
+      cacheFormData.append('conversation_id', currentSessionId);
+      cacheFormData.append('user_id', TEST_USER_ID);
+
       const [
         fetchedAgentName,
         signedUrlResp,
         globalData,
-        chatMessagesResult
+        chatMessagesResult,
+        _cacheRevalidation
       ] = await Promise.all([
         fetchAgentName(),
         axios.get(`${backendUrl}${API_CONFIG.ENDPOINTS.ELEVENLABS.SIGNED_URL}?text_mode=true`, {
@@ -349,12 +344,12 @@ function App() {
         getChatMessagesBySessionId(currentSessionId).catch(err => {
           console.error(`[Connect] Failed to fetch chat messages:`, err);
           return { data: [] };
+        }),
+        axios.post(`${backendUrl}${API_CONFIG.ENDPOINTS.IMAGES.REVALIDATE_CACHE}`, cacheFormData).catch(err => {
+          console.error(`[Connect] Failed to revalidate image cache:`, err);
+          return { data: { images: [] } };
         })
       ]);
-
-      // loggin the chat emssages
-      console.info(`[Connect] Chat messages:`, chatMessagesResult);
-      console.log(`[Connect] Agent name retrieved: ${fetchedAgentName}`);
 
       const { signedUrl: url } = signedUrlResp.data;
       console.log(`[Connect] Signed URL obtained successfully`);
@@ -664,7 +659,6 @@ function App() {
       saveSessionToStorage(result.sessionId);
       setCurrentSessionId(result.sessionId);
       setMessages([]);
-      setSessionMemories([]);
       setGlobalMemories([]);
       setHasLoadedMemoriesOnce(false);
       setDynamicFirstMessage(null);
@@ -1037,9 +1031,6 @@ function App() {
             <MemoryViewer
               isExpanded={memoryExpanded}
               onToggle={() => setMemoryExpanded(!memoryExpanded)}
-              activeTab={memoryTab}
-              onTabChange={setMemoryTab}
-              sessionMemories={sessionMemories}
               globalMemories={globalMemories}
               isLoading={isLoadingMemories}
               sessionId={currentSessionId}
