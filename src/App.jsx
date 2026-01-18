@@ -70,6 +70,7 @@ function App() {
   // Image Upload State
   const [uploadedImages, setUploadedImages] = useState([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDeletingImage, setIsDeletingImage] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef(null);
   const chatPanelRef = useRef(null);
@@ -213,11 +214,10 @@ function App() {
   const removeUploadedImage = async (index) => {
     const imageToRemove = uploadedImages[index];
 
-    // Remove from local state immediately for responsive UI
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
 
-    // Delete from backend (cache, storage, DB) in background
     if (imageToRemove?.serverUrl && currentSessionId) {
+      setIsDeletingImage(true);
       try {
         const deleteFormData = new FormData();
         deleteFormData.append('image_url', imageToRemove.serverUrl);
@@ -228,7 +228,8 @@ function App() {
         console.log('[App] Image deleted from backend:', imageToRemove.serverUrl);
       } catch (error) {
         console.error('[App] Failed to delete image from backend:', error);
-        // Image already removed from UI, so we don't need to show an error to user
+      } finally {
+        setIsDeletingImage(false);
       }
     }
   };
@@ -1008,8 +1009,8 @@ function App() {
             onKeyDown={handleKeyPress}
             disabled={connectionStatus !== 'connected'}
           />
-          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || isUploadingImage || (!inputText.trim() && uploadedImages.length === 0)} className="btn-primary" id="send-btn">
-            <Send size={18} />
+          <button onClick={handleSend} disabled={connectionStatus !== 'connected' || isUploadingImage || isDeletingImage || (!inputText.trim() && uploadedImages.length === 0)} className="btn-primary" id="send-btn">
+            {isDeletingImage ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
           </button>
         </div>
       </div>
