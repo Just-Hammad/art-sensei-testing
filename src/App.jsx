@@ -210,8 +210,27 @@ function App() {
     }
   };
 
-  const removeUploadedImage = (index) => {
+  const removeUploadedImage = async (index) => {
+    const imageToRemove = uploadedImages[index];
+
+    // Remove from local state immediately for responsive UI
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
+
+    // Delete from backend (cache, storage, DB) in background
+    if (imageToRemove?.serverUrl && currentSessionId) {
+      try {
+        const deleteFormData = new FormData();
+        deleteFormData.append('image_url', imageToRemove.serverUrl);
+        deleteFormData.append('conversation_id', currentSessionId);
+        deleteFormData.append('user_id', TEST_USER_ID);
+
+        await axios.post(`${backendUrl}${API_CONFIG.ENDPOINTS.IMAGES.DELETE}`, deleteFormData);
+        console.log('[App] Image deleted from backend:', imageToRemove.serverUrl);
+      } catch (error) {
+        console.error('[App] Failed to delete image from backend:', error);
+        // Image already removed from UI, so we don't need to show an error to user
+      }
+    }
   };
 
   // Client Tools State
