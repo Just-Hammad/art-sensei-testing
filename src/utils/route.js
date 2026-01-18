@@ -9,7 +9,8 @@ export const API_CONFIG = {
         },
         IMAGES: {
             UPLOAD: "/api/v1/images/upload",
-            REVALIDATE_CACHE: "/api/v1/images/revalidate-cache"
+            REVALIDATE_CACHE: "/api/v1/images/revalidate-cache",
+            DELETE: "/api/v1/images/delete"
         },
         VISION: {
             POINT: "/api/v1/vision/point"
