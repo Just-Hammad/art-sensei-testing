@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabaseClient';
-import { generateSessionUserId, generateGlobalUserId } from '../utils/memoryUtils';
+import { generateSessionUserId } from '../utils/memoryUtils';
+import { API_CONFIG } from '../utils/route';
+
+const API_BASE_URL = `${API_CONFIG.BASE_URL}/api/v1`;
 
 const MEMORY_CACHE_DURATION = 8000;
 const memoryCache = {
@@ -80,34 +83,31 @@ export const fetchGlobalMemories = async (userId) => {
   }
 
   try {
-    const globalUserId = generateGlobalUserId(userId);
+    console.log('[API GLOBAL] Fetching memories for:', { userId });
 
-    console.log('[SUPABASE GLOBAL] Fetching memories for:', { userId, globalUserId });
-
-    const { data, error } = await supabase.rpc('get_global_memories', {
-      p_user_id: globalUserId
+    const response = await fetch(`${API_BASE_URL}/memories/global`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
     });
 
-    if (error) {
-      console.error('[SUPABASE GLOBAL] Error:', error);
-      throw new Error(`Failed to fetch global memories: ${error.message}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch global memories: ${response.statusText}`);
     }
 
-    console.log('[SUPABASE GLOBAL] Raw data:', data);
+    const data = await response.json();
+    console.log('[API GLOBAL] Raw response:', data);
 
-    const memories = data ? data.map(item => {
-      const metadata = item.metadata || {};
-      const memoryContent = metadata.data || metadata.memory || metadata.content || JSON.stringify(metadata);
-      return {
-        id: item.id,
-        memory: memoryContent,
-        metadata: metadata
-      };
-    }) : [];
+    const memories = data.memories ? data.memories.map(item => ({
+      id: item.id,
+      memory: item.content,
+      metadata: item.metadata || {},
+      created_at: item.created_at
+    })) : [];
 
-    console.log('[SUPABASE GLOBAL] Processed memories:', memories.length);
+    console.log('[API GLOBAL] Processed memories:', memories.length);
     memories.forEach((mem, idx) => {
-      console.log(`[SUPABASE GLOBAL] [${idx + 1}]`, mem.memory.substring(0, 100));
+      console.log(`[API GLOBAL] [${idx + 1}]`, mem.memory?.substring(0, 100));
     });
 
     const result = {
@@ -154,24 +154,24 @@ export const deleteMemoryById = async (memoryId) => {
   try {
     console.log('[DELETE] Deleting memory by ID:', memoryId);
 
-    const { data, error } = await supabase.rpc('delete_memory_by_id', {
-      p_memory_id: memoryId
+    const response = await fetch(`${API_BASE_URL}/memories/memory`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memory_id: memoryId })
     });
 
-    if (error) {
-      console.error('[DELETE] Supabase RPC error:', error);
-      throw new Error(`Failed to delete memory: ${error.message}`);
+    if (!response.ok) {
+      throw new Error(`Failed to delete memory: ${response.statusText}`);
     }
 
-    console.log('[DELETE] Delete result (rows affected):', data);
+    const data = await response.json();
+    console.log('[DELETE] Delete result:', data);
 
-    // Clear cache after successful deletion
     clearMemoryCache();
 
     return {
-      success: true,
-      deletedCount: data,
-      message: data > 0 ? 'Memory deleted successfully' : 'Memory not found'
+      success: data.success,
+      message: data.message
     };
   } catch (error) {
     console.error('[DELETE] Error deleting memory by ID:', error);
